@@ -8,7 +8,7 @@ Node [streams2](http://nodejs.org/api/stream.html) over [Primus](https://github.
 - Unit tests with 100% coverage.
 - Browser unit tests using [webpack](http://webpack.github.io/) and [PhantomJS](http://phantomjs.org/).
 
-The API is described [here](#tableofcontents).
+The API is described [here](#API).
 
 ## Example
 
@@ -169,7 +169,7 @@ grunt lint
 
 # API
 
-[`PrimusDuplex`](#PrimusDuplex) inherits from [`stream.Duplex`](http://nodejs.org/api/stream.html#stream_class_stream_duplex_1) so you can call any method from [`stream.Readable`](http://nodejs.org/api/stream.html#stream_class_stream_readable) and [`stream.Writable`](http://nodejs.org/api/stream.html#stream_class_stream_writable).
+[`PrimusDuplex`](#primusduplexmsg_stream-options) inherits from [`stream.Duplex`](http://nodejs.org/api/stream.html#stream_class_stream_duplex_1) so you can call any method from [`stream.Readable`](http://nodejs.org/api/stream.html#stream_class_stream_readable) and [`stream.Writable`](http://nodejs.org/api/stream.html#stream_class_stream_writable).
 
 Extra constructor options, an additional parameter to [`readable.read`](http://nodejs.org/api/stream.html#stream_readable_read_size) and an extra event are described below.
 
@@ -218,7 +218,7 @@ Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for
 
 A `PrimusDuplex` object emits a `handshake` event when it has exchanged a handshake message with its peer.
 
-If you passed `initiate_handshake` as `true` when [constructing](#PrimusDuplex) a `PrimusDuplex` object then you can [`write`](#write) to it before `handshake` is emitted. Otherwise, you should wait for `handshake`. The reason is that the first message a `PrimusDuplex` object must receive is a handshake.
+If you passed `initiate_handshake` as `true` when [constructing](#primusduplexmsg_stream-options) a `PrimusDuplex` object then you can [`write`](#write) to it before `handshake` is emitted. Otherwise, you should wait for `handshake`. The reason is that the first message a `PrimusDuplex` object must receive is a handshake.
 
 You might find it simplest on both sides of a connection just to wait for `handshake` before starting to write data.
 

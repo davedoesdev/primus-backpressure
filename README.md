@@ -8,7 +8,7 @@ Node [streams2](http://nodejs.org/api/stream.html) over [Primus](https://github.
 - Unit tests with 100% coverage.
 - Browser unit tests using [webpack](http://webpack.github.io/) and [PhantomJS](http://phantomjs.org/).
 
-The API is described [here](#API).
+The API is described [here](#api).
 
 ## Example
 

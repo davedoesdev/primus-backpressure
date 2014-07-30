@@ -1,0 +1,1590 @@
+/*global expect: false,
+         expr: false,
+         crypto: false,
+         node_crypto: false,
+         client_duplexes: false,
+         it: false,
+         get_server: false,
+         Primus: false,
+         PrimusDuplex: false,
+         client_url: false,
+         client_index: true,
+         primus: false,
+         fs: false,
+         tmp: false,
+         random_fname: false,
+         NodeBuffer: false,
+         closedown: false,
+         connect: false,
+         beforeEach: false,
+         afterEach: false,
+         describe: false,
+         before: false,
+         after: false,
+         browser_timeout: false,
+         static_url: false,
+         async: false */
+/*jslint node: true, nomen: true */
+"use strict";
+
+var wd = require('wd');
+
+describe('PrimusDuplex (browser)', function ()
+{
+    var browser,
+        client_duplex_name,
+        in_browser_queue;
+
+    before(function (cb)
+    {
+        browser = wd.remote();
+
+        browser.init({ browserName: 'phantomjs' }, function (err)
+        {
+            if (err) { return cb(err); }
+            browser.get(static_url + '/loader.html', function (err)
+            {
+                if (err) { return cb(err); }
+                browser.setAsyncScriptTimeout(browser_timeout, cb);
+            });
+        });
+    });
+
+    after(function (cb)
+    {
+        browser.quit(cb);
+    });
+
+    function _in_browser(f /*, args..., test, cb*/)
+    {
+        var test = arguments[arguments.length - 2],
+            cb = arguments[arguments.length - 1],
+
+        f2 = function (f /*, args..., done*/)
+        {
+            var r = {},
+                done = arguments[arguments.length - 1];
+
+            try
+            {
+                f.apply(this, Array.prototype.slice.call(arguments, 1, arguments.length - 1).concat([
+                function (err)
+                {
+                    if (err)
+                    {
+                        r.err = err.stack || err.toString();
+                    }
+                    else
+                    {
+                        r.vals = Array.prototype.slice.call(arguments, 1);
+                    }
+
+                    done(r);
+                }]));
+            }
+            catch (ex)
+            {
+                r.err = ex.stack; done(r);
+            }
+        };
+
+        browser.executeAsync('return ' + f2 + '.apply(this, [' + f + '].concat(Array.prototype.slice.call(arguments)))',
+                        Array.prototype.slice.call(arguments, 1, arguments.length - 2),
+        function (err, r)
+        {
+            if (err) { return cb(err); }
+            if (r.err) { return cb(r.err); }
+            if (!test) { return cb.apply(this, [null].concat(r.vals)); }
+
+            try
+            {
+                test.apply(this, r.vals.concat([cb]));
+            }
+            catch (ex)
+            {
+                cb(ex);
+            }
+        });
+    }
+
+    in_browser_queue = async.queue(function (task, next)
+    {
+        var test = task.args[task.args.length - 2],
+            cb = task.args[task.args.length - 1],
+            test2, cb2;
+
+        if (test)
+        {
+            test2 = function ()
+            {
+                var ths = this, args = arguments;
+                setTimeout(function ()
+                {
+                    test.apply(ths, args);
+                }, 0);
+                next();
+            };
+            cb2 = cb;
+        }
+        else
+        {
+            test2 = null;
+            cb2 = function ()
+            {
+                var ths = this, args = arguments;
+                setTimeout(function ()
+                {
+                    cb.apply(ths, args);
+                }, 0);
+                next();
+            };
+        }
+
+        _in_browser.apply(this, Array.prototype.slice.call(task.args, 0, task.args.length - 2).concat([test2, cb2]));
+    }, 1);
+
+    function in_browser()
+    {
+        in_browser_queue.push({ args: arguments });
+    }
+
+    function wait_browser(/*f, args..., test, cb*/)
+    {
+        var ths = this,
+            args = arguments,
+            test = arguments[arguments.length - 2],
+            cb = arguments[arguments.length - 1];
+
+        in_browser.apply(this, Array.prototype.slice.call(arguments, 0, arguments.length - 2).concat([function (ready /*, args..., cb2*/)
+        {
+            var cb2 = arguments[arguments.length - 1];
+
+            if (ready)
+            {
+                if (!test) { return cb2.apply(this, [null].concat(Array.prototype.slice.call(arguments, 1, arguments.length - 1))); }
+
+                try
+                {
+                    return test.apply(this, Array.prototype.slice.call(arguments, 1));
+                }
+                catch (ex)
+                {
+                    return cb2(ex);
+                }
+            }
+
+            return setTimeout(function ()
+            {
+                wait_browser.apply(ths, args);
+            }, 500);
+        }, cb]));
+    }
+
+    function get_client_duplex_name()
+    {
+        return client_duplex_name;
+    }
+
+    function make_client(cb)
+    {
+        in_browser(function (url, cb)
+        {
+            var client_duplex = new PrimusDuplex(new Primus(url),
+            {
+                highWaterMark: 100
+            }), name = 'client_' + client_index;
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+            
+            cb(null, name);
+        },
+        client_url,
+        null,
+        function (err, name)
+        {
+            if (err) { return cb(err); }
+            client_duplex_name = name;
+            cb();
+        });
+    }
+
+    beforeEach(connect(make_client));
+
+    afterEach(closedown(function (cb)
+    {
+        in_browser(function (name, cb)
+        {
+            function drain()
+            {
+                var buf;
+                do
+                {
+                    buf = this.read();
+                } while (buf !== null);
+            }
+
+            var client_duplex = client_duplexes[name];
+            delete client_duplexes[name];
+
+            client_duplex.end();
+            if (client_duplex._readableState.ended) { return cb(); }
+
+            client_duplex.on('end', cb);
+
+            // read out any existing data
+            client_duplex.on('readable', drain);
+            drain.call(client_duplex);
+        }, client_duplex_name, null, cb);
+    }));
+
+    function both(f1, f2, gcn, gs)
+    {
+        return function (cb)
+        {
+            var done1 = false, done2 = false;
+
+            f1(gcn, gs, true)(function (err)
+            {
+                if (err) { return cb(err); }
+                done1 = true;
+                if (done2) { cb(); }
+            });
+
+            f2(gcn, gs, true)(function (err)
+            {
+                if (err) { return cb(err); }
+                done2 = true;
+                if (done1) { cb(); }
+            });
+        };
+    }
+
+    function single_byte_client_server(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var client_done = false, server_done = false;
+
+            // once because we don't care about readable emitted when we push null
+            get_server().once('readable', function ()
+            {
+                expect(this.read().toString()).to.equal('a');
+                expr(expect(this.read()).not.to.exist);
+                server_done = true;
+                if (client_done) { cb(); }
+            });
+
+            in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                cb(null, client_duplex.write('a'));
+            }, get_client_name(), function (r, cb)
+            {
+                expr(expect(r).to.be.true);
+                client_done = true;
+                if (server_done) { cb(); }
+            }, cb);
+        };
+    }
+
+    function single_byte_server_client(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                client_duplex.once('readable', function ()
+                {
+                    this.single_ready = true;
+                    this.single_read1 = this.read().toString();
+                    this.single_read2 = this.read();
+                });
+                cb();
+            }, get_client_name(), null, function (err)
+            {
+                if (err) { return cb(err); }
+
+                expr(expect(get_server().write('a')).to.be.true);
+
+                wait_browser(function (name, cb)
+                {
+                    var client_duplex = client_duplexes[name];
+                    cb(null,
+                       client_duplex.single_ready,
+                       client_duplex.single_read1,
+                       client_duplex.single_read2);
+                }, get_client_name(), function (read1, read2, cb)
+                {
+                    expect(read1).to.equal('a');
+                    expr(expect(read2).not.to.exist);
+                    cb();
+                }, cb);
+            });
+        };
+    }
+   
+    function multi_bytes_client_server(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var receive_hash = crypto.createHash('sha256'),
+                receive_sum = 0, 
+                total = 100 * 1024,
+                remaining_in = total;
+
+            function check()
+            {
+                in_browser(function (name, cb)
+                {
+                    var client_duplex = client_duplexes[name];
+                    cb(null, client_duplex.send_sum, client_duplex.send_hash.digest('base64'));
+                }, get_client_name(), function (send_sum, send_hash, cb)
+                {
+                    expect(receive_sum).to.equal(send_sum);
+                    expect(receive_hash.digest('base64')).to.equal(send_hash);
+                    cb();
+                }, cb);
+            }
+
+            get_server().on('readable', function ()
+            {
+                var buf, i;
+
+                while (true)
+                {
+                    buf = this.read();
+
+                    if (buf === null)
+                    {
+                        break;
+                    }
+
+                    expect(remaining_in).to.be.at.least(1);
+                    remaining_in -= buf.length;
+                    expect(remaining_in).to.be.at.least(0);
+
+                    receive_hash.update(buf);
+
+                    for (i = 0; i < buf.length; i += 1)
+                    {
+                        receive_sum += buf[i];
+                    }
+
+                    if (remaining_in === 0)
+                    {
+                        console.log('c2s remaining_in', get_client_name(), get_server().name, remaining_in);
+                        check();
+                    }
+                }
+            });
+
+            in_browser(function (name, remaining_out, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                client_duplex.send_hash = node_crypto.createHash('sha256');
+                client_duplex.send_sum = 0;
+
+                function send()
+                {
+                    var n = Math.min(Math.floor(Math.random() * 201), remaining_out),
+                        buf = node_crypto.randomBytes(n),
+                        r, i;
+
+                    for (i = 0; i < n; i += 1)
+                    {
+                        client_duplex.send_sum += buf[i];
+                    }
+                        
+                    client_duplex.send_hash.update(buf);
+                    r = client_duplex.write(buf);
+                    remaining_out -= n;
+
+                    if (remaining_out > 0)
+                    {
+                        if (r)
+                        {
+                            setTimeout(send, Math.floor(Math.random() * 51));
+                        }
+                        else
+                        {
+                            client_duplex.once('drain', send);
+                        }
+                    }
+                }
+
+                setTimeout(send, 0);
+                cb();
+            }, get_client_name(), total, null, function (err)
+            {
+                if (err) { return cb(err); }
+            });
+        };
+    }
+
+    function multi_bytes_server_client(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var send_hash = crypto.createHash('sha256'),
+                send_sum = 0,
+                total = 100 * 1024,
+                remaining_out = total;
+
+            in_browser(function (name, remaining_in, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                client_duplex.receive_hash = node_crypto.createHash('sha256');
+                client_duplex.receive_sum = 0;
+
+                client_duplex.on('readable', function ()
+                {
+                    var buf, i;
+
+                    while (true)
+                    {
+                        buf = this.read();
+                        if (buf === null) { break; }
+
+                        remaining_in -= buf.length;
+
+                        client_duplex.receive_hash.update(buf);
+
+                        for (i = 0; i < buf.length; i += 1)
+                        {
+                            client_duplex.receive_sum += buf[i];
+                        }
+
+                        if (remaining_in === 0)
+                        {
+                            client_duplex.receive_digest = client_duplex.receive_hash.digest('base64');
+                        }
+                    }
+                });
+
+                cb();
+            }, get_client_name(), total, null, function (err)
+            {
+                if (err) { return cb(err); }
+            });
+
+            wait_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                cb(null,
+                   !!client_duplex.receive_digest, 
+                   client_duplex.receive_sum,
+                   client_duplex.receive_digest);
+            }, get_client_name(), function (receive_sum, receive_digest, cb)
+            {
+                expect(receive_sum).to.equal(send_sum);
+                expect(receive_digest).to.equal(send_hash.digest('base64'));
+                console.log('s2c remaining_in', get_client_name(), get_server().name, 0);
+                cb();
+            }, cb);
+
+            function send()
+            {
+                var n = Math.min(Math.floor(Math.random() * 201), remaining_out),
+                    buf = crypto.randomBytes(n),
+                    r = get_server().write(buf),
+                    i;
+
+                for (i = 0; i < n; i += 1)
+                {
+                    send_sum += buf[i];
+                }
+
+                send_hash.update(buf);
+                remaining_out -= n;
+
+                if (remaining_out > 0)
+                {
+                    if (r)
+                    {
+                        setTimeout(send, Math.floor(Math.random() * 51));
+                    }
+                    else
+                    {
+                        get_server().once('drain', send);
+                    }
+                }
+            }
+
+            send();
+        };
+    }
+
+    function delay_server_status(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var drain_count = 0;
+            
+            in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+
+                client_duplex.read_count = 0;
+                client_duplex.readable_count = 0;
+
+                client_duplex.on('readable', function ()
+                {
+                    this.readable_count += 1;
+
+                    var buf;
+
+                    while (true)
+                    {
+                        buf = this.read(null, false);
+                        if (buf === null) { break; }
+
+                        this.read_count += buf.length;
+                    }
+                });
+
+                cb();
+            }, get_client_name(), null, function (err)
+            {
+                if (err) { return cb(err); }
+            });
+
+            wait_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                cb(null, client_duplex.read_count === 100);
+            }, get_client_name(), function (cb)
+            {
+                console.log('dss read 100');
+                // give time for any unexpected reads and drains
+                setTimeout(function ()
+                {
+                    in_browser(function (name, cb)
+                    {
+                        var client_duplex = client_duplexes[name];
+                        client_duplex.removeAllListeners('readable');
+                        cb(null,
+                           client_duplex.read_count,
+                           client_duplex.readable_count);
+                    }, get_client_name(), function (read_count, readable_count, cb)
+                    {
+                        expect(read_count).to.equal(100);
+                        expect(readable_count).to.equal(1);
+                        expect(drain_count).to.equal(0);
+                        cb();
+                    }, cb);
+                }, 2000);
+            }, cb);
+
+            expr(expect(get_server().write(new Buffer(101))).to.be.false);
+
+            get_server().on('drain', function ()
+            {
+                drain_count += 1;
+            });
+        };
+    }
+
+    function delay_client_status(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var readable_count = 0, read_count = 0;
+
+            function check()
+            {
+                expect(read_count).to.equal(100);
+                expect(readable_count).to.equal(1);
+                get_server().removeAllListeners('readable');
+
+                in_browser(function (name, cb)
+                {
+                    var client_duplex = client_duplexes[name];
+                    cb(null, client_duplex.drain_count);
+                }, get_client_name(), function (drain_count, cb)
+                {
+                    expect(drain_count).to.equal(0);
+                    cb();
+                }, cb);
+            }
+
+            get_server().on('readable', function ()
+            {
+                readable_count += 1;
+
+                var buf;
+
+                while (true)
+                {
+                    buf = this.read(null, false);
+                    if (buf === null) { break; }
+
+                    read_count += buf.length;
+
+                    if (read_count === 100)
+                    {
+                        console.log('dcs read 100');
+                        // give time for any unexpected reads and drains
+                        setTimeout(check, 2000);
+                    }
+                }
+            });
+
+            in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name],
+                    r = client_duplex.write(new NodeBuffer(101));
+
+                client_duplex.drain_count = 0;
+
+                client_duplex.on('drain', function ()
+                {
+                    this.drain_count += 1;
+                });
+
+                cb(null, r);
+            }, get_client_name(), function (r, cb)
+            {
+                expr(expect(r).to.be.false);
+                cb();
+            }, function (err)
+            {
+                if (err) { return cb(err); }
+            });
+        };
+    }
+    
+    function client_write_backpressure(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var j = 1,
+                read_hash = crypto.createHash('sha256'),
+                write_done = false,
+                read_done = false;
+
+            get_server().on('readable', function ()
+            {
+                var buf;
+
+                while (true)
+                {
+                    buf = this.read(j);
+                    if (buf === null) { break; }
+
+                    read_hash.update(buf);
+
+                    j += 1;
+                }
+            });
+
+            get_server().on('end', function ()
+            {
+                in_browser(function (name, cb)
+                {
+                    var client_duplex = client_duplexes[name];
+                    cb(null, client_duplex.write_hash.digest('base64'));
+                }, get_client_name(), function (write_digest, cb)
+                {
+                    expect(read_hash.digest('base64')).to.equal(write_digest);
+                    read_done = true;
+                    console.log("client wbp read done");
+                    if (write_done) { cb(); }
+                }, cb);
+            });
+
+            in_browser(function (name, cb)
+            {
+                var chunks = new Array(100),
+                    ci,
+                    client_duplex = client_duplexes[name],
+                    i = 0;
+
+                for (ci = 0; ci < chunks.length; ci += 1)
+                {
+                    chunks[ci] = node_crypto.randomBytes(ci);
+                }
+
+                client_duplex.finished = false;
+                client_duplex.drains = 0;
+                client_duplex.write_hash = node_crypto.createHash('sha256');
+
+                client_duplex.on('finish', function ()
+                {
+                    this.finished = true;
+                });
+
+                client_duplex.on('drain', function ()
+                {
+                    this.drains += 1;
+                });
+                
+                function write()
+                {
+                    var ret;
+
+                    do
+                    {
+                        ret = client_duplex.write(chunks[i]);
+                        client_duplex.write_hash.update(chunks[i]);
+                        i += 1;
+                    }
+                    while ((ret !== false) && (i < chunks.length));
+
+                    if (i < chunks.length)
+                    {
+                        client_duplex.once('drain', write);
+                    }
+                    else
+                    {
+                        client_duplex.end();
+                    }
+                }
+
+                setTimeout(write, 0);
+                cb();
+            }, get_client_name(), null, function (err)
+            {
+                if (err) { return cb(err); }
+            });
+
+            wait_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                cb(null, client_duplex.finished, client_duplex.drains);
+            }, get_client_name(), function (drains, cb)
+            {
+                expect(drains).to.equal(31);
+                write_done = true;
+                console.log("client wbp write done");
+                if (read_done) { cb(); }
+            }, cb);
+        };
+    }
+
+    function server_write_backpressure(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var i = 0,
+                drains = 0,
+                write_hash = crypto.createHash('sha256'),
+                write_done = false,
+                read_done = false,
+                chunks = new Array(100),
+                ci;
+
+            for (ci = 0; ci < chunks.length; ci += 1)
+            {
+                chunks[ci] = crypto.randomBytes(ci);
+            }
+
+            in_browser(function (name, cb)
+            {
+                var j = 1,
+                    client_duplex = client_duplexes[name];
+
+                client_duplex.ended = false;
+                client_duplex.read_hash = node_crypto.createHash('sha256');
+
+                client_duplex.on('readable', function ()
+                {
+                    var buf;
+
+                    while (true)
+                    {
+                        buf = this.read(j);
+                        if (buf === null) { break; }
+
+                        this.read_hash.update(buf);
+
+                        j += 1;
+                    }
+                });
+
+                client_duplex.on('end', function ()
+                {
+                    this.ended = true;
+                });
+                 
+                cb();
+            }, get_client_name(), null, function (err)
+            {
+                if (err) { return cb(err); }
+
+                get_server().on('finish', function ()
+                {
+                    expect(drains).to.equal(31);
+                    write_done = true;
+                    console.log("server wbp write done");
+                    if (read_done) { cb(); }
+                });
+
+                get_server().on('drain', function ()
+                {
+                    drains += 1;
+                });
+
+                function write()
+                {
+                    var ret;
+
+                    do
+                    {
+                        ret = get_server().write(chunks[i]);
+                        write_hash.update(chunks[i]);
+                        i += 1;
+                    }
+                    while ((ret !== false) && (i < chunks.length));
+
+                    if (i < chunks.length)
+                    {
+                        get_server().once('drain', write);
+                    }
+                    else
+                    {
+                        get_server().end();
+                    }
+                }
+                
+                write();
+            });
+
+            wait_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+
+                if (client_duplex.ended)
+                {
+                    cb(null, true, client_duplex.read_hash.digest('base64'));
+                }
+                else
+                {
+                    cb(null, false);
+                }
+            }, get_client_name(), function (read_digest, cb)
+            {
+                expect(read_digest).to.equal(write_hash.digest('base64'));
+                read_done = true;
+                console.log("server wbp read done");
+                if (write_done) { cb(); }
+            }, cb);
+        };
+    }
+   
+    function server_read_backpressure(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var readables = 0;
+
+            get_server().on('readable', function ()
+            {
+                readables += 1;
+            });
+
+            get_server().once('readable', function ()
+            {
+                in_browser(function (name, cb)
+                {
+                    var client_duplex = client_duplexes[name];
+                    cb(null, client_duplex.drains);
+                }, get_client_name(), function (drains, cb)
+                {
+                    expect(drains).to.equal(0);
+                    expect(readables).to.equal(1);
+
+                    get_server().once('readable', function ()
+                    {
+                        in_browser(function (name, cb)
+                        {
+                            var client_duplex = client_duplexes[name];
+                            cb(null, client_duplex.drains);
+                        }, get_client_name(), function (drains, cb)
+                        {
+                            expect(drains).to.equal(1);
+                            expect(readables).to.equal(2);
+                            expect(get_server().read().length).to.equal(1);
+                            cb();
+                        }, cb);
+                    });
+
+                    expect(get_server().read().length).to.equal(100);
+                }, cb);
+            });
+
+            in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+
+                client_duplex.drains = 0;
+
+                client_duplex.on('drain', function ()
+                {
+                    this.drains += 1;
+                });
+
+                cb(null, client_duplex.write(node_crypto.randomBytes(101)));
+            }, get_client_name(), function (r)
+            {
+                expr(expect(r).to.be.false);
+            }, cb);
+        };
+    }
+
+    function client_read_backpressure(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var drains = 0;
+
+            get_server().on('drain', function ()
+            {
+                drains += 1;
+            });
+
+            in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+
+                client_duplex.readables = 0;
+
+                client_duplex.on('readable', function ()
+                {
+                    this.readables += 1;
+                });
+                
+                cb();
+            }, get_client_name(), null, function (err)
+            {
+                if (err) { return cb(err); }
+                expr(expect(get_server().write(crypto.randomBytes(101))).to.be.false);
+            });
+
+            wait_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                cb(null, client_duplex.readables === 1);
+            }, get_client_name(), function (cb)
+            {
+                expect(drains).to.equal(0);
+
+                in_browser(function (name, cb)
+                {
+                    var client_duplex = client_duplexes[name];
+                    cb(null, client_duplex.read().length);    
+                }, get_client_name(), function (r)
+                {
+                    expect(r).to.equal(100);
+                }, cb);
+
+                wait_browser(function (name, cb)
+                {
+                    var client_duplex = client_duplexes[name];
+                    cb(null, client_duplex.readables === 2);
+                }, get_client_name(), function (cb)
+                {
+                    expect(drains).to.equal(1);
+
+                    in_browser(function (name, cb)
+                    {
+                        var client_duplex = client_duplexes[name];
+                        cb(null, client_duplex.read().length);
+                    }, get_client_name(), function (r, cb)
+                    {
+                        expect(r).to.equal(1);
+                        cb();
+                    }, cb);
+                }, cb);
+            }, cb);
+        };
+    }
+   
+    function flow_client_server(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var receive_hash = crypto.createHash('sha256'),
+                total = 100 * 1024,
+                remaining_in = total;
+
+            get_server().on('data', function (buf)
+            {
+                expect(remaining_in).to.be.at.least(1);
+                remaining_in -= buf.length;
+                expect(remaining_in).to.be.at.least(0);
+
+                receive_hash.update(buf);
+
+                if (remaining_in === 0)
+                {
+                    in_browser(function (name, cb)
+                    {
+                        var client_duplex = client_duplexes[name];
+                        cb(null, client_duplex.send_hash.digest('base64'));
+                    }, get_client_name(), function (send_digest, cb)
+                    {
+                        expect(receive_hash.digest('base64')).to.equal(send_digest);
+                        cb();
+                    }, cb);
+                }
+            });
+
+            in_browser(function (name, remaining_out, cb)
+            {
+                var client_duplex = client_duplexes[name];
+
+                client_duplex.send_hash = node_crypto.createHash('sha256');
+
+                function send()
+                {
+                    var n = Math.min(Math.floor(Math.random() * 201), remaining_out),
+                        buf = node_crypto.randomBytes(n);
+
+                    client_duplex.write(buf);
+                    client_duplex.send_hash.update(buf);
+                    remaining_out -= n;
+
+                    if (remaining_out > 0)
+                    {
+                        setTimeout(send, Math.floor(Math.random() * 51));
+                    }
+                }
+
+                setTimeout(send, 0);
+                cb();
+            }, get_client_name(), total, null, function (err)
+            {
+                if (err) { return cb(err); }
+            });
+        };
+    }
+    
+    function flow_server_client(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var send_hash = crypto.createHash('sha256'),
+                total = 100 * 1024,
+                remaining_out = total;
+
+            in_browser(function (name, remaining_in, cb)
+            {
+                var receive_hash = node_crypto.createHash('sha256'),
+                    client_duplex = client_duplexes[name];
+
+                client_duplex.on('data', function (buf)
+                {
+                    remaining_in -= buf.length;
+                    this.remaining_in = remaining_in;
+                    receive_hash.update(buf);
+
+                    if (remaining_in === 0)
+                    {
+                        this.receive_digest = receive_hash.digest('base64');
+                    }
+                });
+
+                cb();
+            }, get_client_name(), total, null, function (err)
+            {
+                if (err) { return cb(err); }
+            });
+
+            wait_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                cb(null,
+                   !!client_duplex.receive_digest,
+                   client_duplex.receive_digest);
+            }, get_client_name(), function (receive_digest, cb)
+            {
+                expect(receive_digest).to.equal(send_hash.digest('base64'));
+
+                // check no other data arrives
+                setTimeout(function ()
+                {
+                    in_browser(function (name, cb)
+                    {
+                        var client_duplex = client_duplexes[name];
+                        cb(null, client_duplex.remaining_in);
+                    }, get_client_name(), function (remaining_in, cb)
+                    {
+                        expect(remaining_in).to.equal(0);
+                        cb();
+                    }, cb);
+                }, 2000);
+            }, cb);
+
+            function send()
+            {
+                var n = Math.min(Math.floor(Math.random() * 201), remaining_out),
+                    buf = crypto.randomBytes(n);
+
+                get_server().write(buf);
+                send_hash.update(buf);
+                remaining_out -= n;
+
+                if (remaining_out > 0)
+                {
+                    setTimeout(send, Math.floor(Math.random() * 51));
+                }
+            }
+
+            send();
+        };
+    }
+
+    function pipe(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            var in_stream = fs.createReadStream(random_fname);
+
+            tmp.tmpName(function (err, out_fname)
+            {
+                if (err) { return cb(err); }
+
+                var out_stream = fs.createWriteStream(out_fname);
+
+                out_stream.on('finish', function ()
+                {
+                    fs.readFile(random_fname, function (err, in_buf)
+                    {
+                        if (err) { return cb(err); }
+                        fs.readFile(out_fname, function (err, out_buf)
+                        {
+                            if (err) { return cb(err); }
+                            expect(in_buf).to.eql(out_buf);
+                            fs.unlink(out_fname, function (err)
+                            {
+                                if (err) { return cb(err); }
+                                cb();
+                            });
+                        });
+                    });
+
+                });
+
+                get_server().pipe(out_stream);
+                in_stream.pipe(get_server());
+
+                in_browser(function (name, cb)
+                {
+                    var client_duplex = client_duplexes[name];
+                    client_duplex.pipe(client_duplex);
+                    cb();
+                }, get_client_name(), null, function (err)
+                {
+                    if (err) { return cb(err); }
+                });
+            });
+        };
+    }
+    
+    function error_event(get_client_name)
+    {
+        return function (cb)
+        {
+            in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+
+                client_duplex.on('error', function (err)
+                {
+                    cb(null, err);
+                });
+
+                client_duplex._msg_stream.emit('error', new Error('foo'));
+            }, get_client_name(), function (err, cb)
+            {
+                expect(err.message).to.equal('foo');
+                cb();
+            }, cb);
+        };
+    }
+    
+    function unknown_message(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+
+                client_duplex.on('error', function ()
+                {
+                    this.errored = true;
+                });
+
+                cb();
+            }, get_client_name(), null, function (err)
+            {
+                if (err) { return cb(err); }
+                get_server()._msg_stream.write({ type: 'foo' });
+            });
+
+            wait_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                cb(null, !!client_duplex.errored);
+            }, get_client_name(), null, cb);
+        };
+    }
+
+    it('should send a single byte from client to server',
+       single_byte_client_server(get_client_duplex_name, get_server));
+
+    it('should send a single byte from server to client',
+       single_byte_server_client(get_client_duplex_name, get_server));
+
+    it('should send a single byte in both directions',
+       both(single_byte_client_server,
+            single_byte_server_client,
+            get_client_duplex_name,
+            get_server));
+
+    it('should send multiple bytes from client to server',
+       multi_bytes_client_server(get_client_duplex_name, get_server));
+
+    it('should send multiple bytes from server to client',
+       multi_bytes_server_client(get_client_duplex_name, get_server));
+
+    it('should send multiple bytes in both directions',
+       both(multi_bytes_client_server,
+            multi_bytes_server_client,
+            get_client_duplex_name,
+            get_server));
+
+    it('should be able to delay server status messages',
+       delay_server_status(get_client_duplex_name, get_server));
+    
+    it('should be able to delay client status messages',
+       delay_client_status(get_client_duplex_name, get_server));
+
+    it('should be able to delay server and client status messages',
+       both(delay_server_status,
+            delay_client_status,
+            get_client_duplex_name,
+            get_server));
+
+    it('should handle client write backpressure',
+       client_write_backpressure(get_client_duplex_name, get_server));
+
+    it('should handle server write backpressure',
+       server_write_backpressure(get_client_duplex_name, get_server)); 
+
+    it('should handle client and server write backpressure',
+       both(client_write_backpressure,
+            server_write_backpressure,
+            get_client_duplex_name,
+            get_server));
+ 
+    it('should handle server read backpressure',
+       server_read_backpressure(get_client_duplex_name, get_server));
+    
+    it('should handle client read backpressure',
+       client_read_backpressure(get_client_duplex_name, get_server));
+
+    it('should handle server and client read backpressure',
+       both(server_read_backpressure,
+            client_read_backpressure,
+            get_client_duplex_name,
+            get_server));
+
+    it('should handle flow mode from client to server',
+       flow_client_server(get_client_duplex_name, get_server));
+    
+    it('should handle flow mode from server to client',
+       flow_server_client(get_client_duplex_name, get_server)); 
+
+    it('should handle flow mode between client and server in both directions',
+       both(flow_client_server,
+            flow_server_client,
+            get_client_duplex_name,
+            get_server));
+
+    it('should be able to pipe from server to client and back',
+       pipe(get_client_duplex_name, get_server));
+    
+    it('should expose client error events',
+       error_event(get_client_duplex_name, get_server));
+
+    it('should emit an error if client receives an unknown message',
+       unknown_message(get_client_duplex_name, get_server));
+
+    it('should support default options', function (cb)
+    {
+        var spark_duplex2, client_duplex_name2;
+
+        function doit()
+        {
+            var done1 = false, done2 = false;
+
+            function done()
+            {
+                in_browser(function (name, cb)
+                {
+                    var client_duplex = client_duplexes[name];
+                    client_duplex.on('end', cb);
+                    client_duplex.end();
+                    // multi_byte will read the null so end is emitted
+                }, client_duplex_name2, null, cb);
+            }
+
+            both(multi_bytes_client_server,
+                 multi_bytes_server_client,
+                 get_client_duplex_name,
+                 get_server)(function (err)
+                 {
+                     if (err) { return cb(err); }
+                     done1 = true;
+                     if (done2) { done(); }
+                 });
+
+            both(multi_bytes_client_server,
+                 multi_bytes_server_client,
+                 function ()
+                 {
+                     return client_duplex_name2;
+                 }, function ()
+                 {
+                     return spark_duplex2;
+                 })(function (err)
+                 {
+                     if (err) { return cb(err); }
+                     done2 = true;
+                     if (done1) { done(); }
+                 });
+        }
+
+        primus.once('connection', function (spark2)
+        {
+            var duplex = new PrimusDuplex(spark2);
+            duplex.name = 'spark2';
+
+            duplex.on('handshake', function ()
+            {
+                spark_duplex2 = duplex;
+                if (client_duplex_name2) { doit(); }
+            });
+
+            duplex.on('end', function ()
+            {
+                this.end();
+            });
+
+            duplex._send_handshake();
+        });
+
+        in_browser(function (url, cb)
+        {
+            var client_duplex = new PrimusDuplex(new Primus(url)),
+                name = 'client_' + client_index;
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+            
+            cb(null, name);
+        },
+        client_url,
+        null,
+        function (err, name)
+        {
+            if (err) { return cb(err); }
+            client_duplex_name2 = name;
+            if (spark_duplex2) { doit(); }
+        });
+    });
+
+    it('should emit an error if first message is not handshake', function (cb)
+    {
+        primus.once('connection', function (spark2)
+        {
+            var duplex = new PrimusDuplex(spark2);
+
+            duplex.on('handshake', function ()
+            {
+                cb(new Error('should not be called'));
+            });
+
+            duplex.on('end', function ()
+            {
+                this.end();
+            });
+
+            // have to read null to get end event
+            duplex.on('readable', function ()
+            {
+                this.read();
+            });
+
+            duplex._msg_stream.write({ type: 'bar' });
+        });
+
+        in_browser(function (url, cb)
+        {
+            var client_duplex = new PrimusDuplex(new Primus(url)),
+                name = 'client_' + client_index;
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.on('error', function ()
+            {
+                this.on('end', cb);
+                this.end();
+                // have to read null to get end event
+                client_duplex.on('readable', function ()
+                {
+                    this.read();
+                });
+            });
+        },
+        client_url,
+        null,
+        cb);
+    });
+
+    it('should support writing before handshaken', function (cb)
+    {
+        var client_done = false, server_done = false;
+
+        primus.once('connection', function (spark2)
+        {
+            var duplex = new PrimusDuplex(spark2);
+
+            duplex.once('readable', function ()
+            {
+                expect(this.read().toString()).to.equal('y');
+
+                this.on('end', function ()
+                {
+                    server_done = true;
+                    if (client_done) { cb(); }
+                });
+
+                // have to read null to get end event
+                duplex.on('readable', function ()
+                {
+                    this.read();
+                });
+            });
+
+            duplex.end('x');
+            duplex._send_handshake();
+        });
+
+        in_browser(function (url, cb)
+        {
+            var client_duplex = new PrimusDuplex(new Primus(url)),
+                name = 'client_' + client_index;
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.once('readable', function ()
+            {
+                var data = this.read();
+
+                this.on('end', function ()
+                {
+                    cb(null, data.toString());
+                });
+
+                // have to read null to get end event
+                this.on('readable', function ()
+                {
+                    this.read();
+                });
+            });
+
+            client_duplex.end('y');
+        },
+        client_url,
+        null,
+        function (err, data)
+        {
+            if (err) { return cb(err); }
+            expect(data).to.equal('x');
+            client_done = true;
+            if (server_done) { cb(); }
+        });
+    });
+
+    it('should support allowHalfOpen=false', function (cb)
+    {
+        var client_done = false, server_done = false;
+
+        primus.once('connection', function (spark2)
+        {
+            var duplex = new PrimusDuplex(spark2,
+            {
+                allowHalfOpen: false,
+                initiate_handshake: true
+            }), ended = false;
+
+            duplex.on('end', function ()
+            {
+                ended = true;
+            });
+
+            duplex.on('readable', function ()
+            {
+                this.read();
+            });
+
+            // should close for write after receiving end
+            duplex.on('finish', function ()
+            {
+                expr(expect(ended).to.be.true);
+                server_done = true;
+                if (client_done) { cb(); }
+            });
+        });
+
+        in_browser(function (url, cb)
+        {
+            var client_duplex = new PrimusDuplex(new Primus(url),
+                {
+                    allowHalfOpen: false
+                }),
+                name = 'client_' + client_index;
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.on('handshake', function ()
+            {
+                var finished = false;
+
+                this.on('finish', function ()
+                {
+                    finished = true;
+                });
+
+                this.on('end', function ()
+                {
+                    cb(null, finished);
+                });
+
+                this.on('readable', function ()
+                {
+                    this.read();
+                });
+
+                this.end();
+            });
+        },
+        client_url,
+        null,
+        function (err, finished)
+        {
+            if (err) { return cb(err); }
+            expr(expect(finished).to.be.true);
+            client_done = true;
+            if (server_done) { cb(); }
+        });
+    });
+});

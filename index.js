@@ -251,7 +251,13 @@ function PrimusDuplex(msg_stream, options)
             if (data.type === 'data')
             {
                 ths._remote_seq = data.seq;
-                ths.push(ths._decode_data(data.data));
+
+                // work around https://github.com/primus/primus/issues/263
+                /* istanbul ignore else */
+                if (!ths._readableState.ended)
+                {
+                    ths.push(ths._decode_data(data.data));
+                }
             }
             else if (data.type === 'status')
             {

@@ -93,6 +93,8 @@ global.connect = function (make_client)
                 highWaterMark: 100
             });
 
+            spark_duplex.name = 'server';
+
             spark_duplex.on('handshake', function ()
             {
                 spark_done = true;

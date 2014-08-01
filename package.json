@@ -55,7 +55,7 @@
     "grunt-jslint": "~1.1.12",
     "grunt-webpack": "~1.0.7",
     "istanbul": "~0.2.13",
-    "primus": "~2.3.0",
+    "primus": "primus/primus",
     "serve-static": "~1.3.2",
     "tmp": "~0.0.24",
     "wd": "~0.3.3",

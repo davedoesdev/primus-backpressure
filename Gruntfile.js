@@ -103,7 +103,7 @@ module.exports = function (grunt)
     grunt.registerTask('test', 'cafemocha:default');
     grunt.registerTask('test-examples', 'cafemocha:examples');
     grunt.registerTask('test-browser', ['exec:start_phantomjs',
-                                        'sleep:2000',
+                                        'sleep:10000',
                                         'usetheforce_on',
                                         'cafemocha:browser',
                                         'exec:stop_phantomjs',

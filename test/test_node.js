@@ -673,6 +673,8 @@ describe('PrimusDuplex (Node)', function ()
             highWaterMark: 100
         });
 
+        client_duplex.name = 'client';
+
         cb();
     }
 

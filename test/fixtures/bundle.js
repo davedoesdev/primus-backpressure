@@ -60,11 +60,13 @@
 
 	Node [streams2](http://nodejs.org/api/stream.html) over [Primus](https://github.com/primus/primus): added back-pressure!
 
-	- Pass in a Primus client or spark, get back a [Duplex](http://nodejs.org/api/stream.html#stream_class_stream_duplex_1). Do this on both sides of a Primus connection.
+	- Pass in a Primus client or spark, get back a [`stream.Duplex`](http://nodejs.org/api/stream.html#stream_class_stream_duplex_1). Do this on both sides of a Primus connection.
 	- [`write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback) returns `true` when the receiver is full.
 	- Use [`read`](http://nodejs.org/api/stream.html#stream_readable_read_size) and [`readable`](http://nodejs.org/api/stream.html#stream_event_readable) to exert back-pressure on the sender.
 	- Unit tests with 100% coverage.
 	- Browser unit tests using [webpack](http://webpack.github.io/) and [PhantomJS](http://phantomjs.org/).
+
+	The API is described [here](#api).
 
 	## Example
 
@@ -224,14 +226,36 @@
 	```
 
 	# API
+
+	[`PrimusDuplex`](#primusduplexmsg_stream-options) inherits from [`stream.Duplex`](http://nodejs.org/api/stream.html#stream_class_stream_duplex_1) so you can call any method from [`stream.Readable`](http://nodejs.org/api/stream.html#stream_class_stream_readable) and [`stream.Writable`](http://nodejs.org/api/stream.html#stream_class_stream_writable).
+
+	Extra constructor options, an additional parameter to [`readable.read`](http://nodejs.org/api/stream.html#stream_readable_read_size) and an extra event are described below.
 	*/
-	/*jslint node: true, nomen: true */
+	/*jslint node: true, nomen: true, unparam: true */
 
 	"use strict";
 
 	var util = __webpack_require__(4),
 	    stream = __webpack_require__(5);
 
+	/**
+	Creates a new `PrimusDuplex` object which exerts back-pressure over a [Primus](https://github.com/primus/primus) connection.
+
+	Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for your Primus client and one for your spark as soon as you have them.
+
+	@constructor
+	@extends stream.Duplex
+
+	@param {Object} msg_stream The Primus client or spark you wish to exert back-pressure over.
+
+	@param {Object} [options] Configuration options. This is passed onto `stream.Duplex` and can contain the following extra properties:
+
+	- `{Boolean} [initiate_handshake]` Whether to send a handshake message to the other side of the connection. `PrimusDuplex` needs to exchange a handshake message so both sides know how much data the other can initially buffer. You should pass `initiate_handshake` as `true` on _one side only after connection has been established_. The simplest way to do this is on the server as soon as Primus emits a `connection` event. Defaults to `false`.
+
+	- `{Function} encode_data(chunk, encoding, start, end)` Optional encoding function for data passed to [`writable.write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback). `chunk` and `encoding` are as described in the `writable.write` documentation. The difference is that `encode_data` is synchronous (it must return the encoded data) and it should only encode data between the `start` and `end` positions in `chunk`. Defaults to a function which does `chunk.toString('base64', start, end)`.
+
+	- `{Function} decode_data(chunk)` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a functon which does `new Buffer(chunk, 'base64')`.
+	*/
 	function PrimusDuplex(msg_stream, options)
 	{
 	    stream.Duplex.call(this, options);
@@ -242,18 +266,19 @@
 	    this._seq = 0;
 	    this._remote_free = 0;
 	    this._data = null;
+	    this._encoding = null;
 	    this._index = 0;
 	    this._handshake_sent = false;
 	    this._finished = false;
 
-	    this._encode_data = options.encode_data || function (data, start, end)
+	    this._encode_data = options.encode_data || function (chunk, encoding, start, end)
 	    {
-	        return data.toString('base64', start, end);
+	        return chunk.toString('base64', start, end);
 	    };
 
-	    this._decode_data = options.decode_data || function (data)
+	    this._decode_data = options.decode_data || function (chunk)
 	    {
-	        return new Buffer(data, 'base64');
+	        return new Buffer(chunk, 'base64');
 	    };
 
 	    var ths = this;
@@ -403,9 +428,16 @@
 
 	PrimusDuplex.prototype._read = function () { return undefined; };
 
-	PrimusDuplex.prototype.read = function (n, send_status)
+	/**
+	See [`readable.read`](http://nodejs.org/api/stream.html#stream_readable_read_size). `PrimusDuplex` adds an extra optional parameter, `send_status`.
+
+	@param {Number} [size] Optional argument to specify how much data to read. Defaults to `undefined` (you can also specify `null`) which means return all the data available.
+
+	@param {Boolean} [send_status] Every time you call `read`, a status message is sent to the peer `PrimusDuplex` indicating how much space is left in the internal buffer to receive new data. To prevent deadlock, these status messages are always sent &mdash; they aren't subject to back-pressure. Normally this is fine because status messages are small. However, if your application reads data one byte at a time, for example, you may wish to control when status messages are sent. To stop a status message being sent when you call `read`, pass `send_status` as `false`. `send_status` defaults to `true`. To force a status message to be sent without reading any data, call `read(0)`.
+	*/
+	PrimusDuplex.prototype.read = function (size, send_status)
 	{
-	    var r = stream.Duplex.prototype.read.call(this, n);
+	    var r = stream.Duplex.prototype.read.call(this, size);
 
 	    if (send_status !== false)
 	    {
@@ -430,7 +462,7 @@
 	    this._msg_stream.write(
 	    {
 	        type: 'data',
-	        data: this._encode_data(this._data, this._index, this._index + size),
+	        data: this._encode_data(this._data, this._encoding, this._index, this._index + size),
 	        seq: this._seq
 	    });
 
@@ -440,6 +472,7 @@
 	    if (this._index === this._data.length)
 	    {
 	        this._data = null;
+	        this._encoding = null;
 	        this._index = 0;
 	        cb = this._cb;
 	        this._cb = null;
@@ -447,15 +480,13 @@
 	    }
 	};
 
-	/*jslint unparam: true */ var ignore;
-
 	PrimusDuplex.prototype._write = function (data, encoding, cb)
 	{
 	    this._data = data;
+	    this._encoding = encoding;
 	    this._cb = cb;
 	    this._send();
 	};
-	/*jslint unparam: false */ var ignore;
 
 	exports.PrimusDuplex = PrimusDuplex;
 

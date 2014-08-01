@@ -892,13 +892,7 @@ Primus.prototype.transforms = function transforms(primus, connection, type, data
     // and then save the raw string in your database without the stringify
     // overhead.
     //
-    if ('incoming' === type) {
-      if (primus.readyState !== Primus.CLOSED) {
-        connection.emit('data', packet.data, raw);
-      }
-
-      return;
-    } 
+    if ('incoming' === type) return connection.emit('data', packet.data, raw);
 
     connection._write(packet.data);
   }));
@@ -1608,7 +1602,7 @@ Primus.prototype.decoder = function decoder(data, fn) {
 
   fn(err, data);
 };
-Primus.prototype.version = "2.3.0";
+Primus.prototype.version = "2.4.0";
 
 //
 // Hack 1: \u2028 and \u2029 are allowed inside string in JSON. But JavaScript

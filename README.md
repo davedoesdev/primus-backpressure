@@ -195,6 +195,8 @@ Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for
 
   - `{Function} [decode_data(chunk)]` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a functon which does `new Buffer(chunk, 'base64')`.
 
+  - `{Integer} [seq_size]` Number of random bytes to use for sequence numbers. `PrimusDuplex` sends sequence numbers with messages so it knows it has up-to-date information from its peer. The sequence numbers are random so we know the peer has actually read data from the connection. Defaults to 20.
+
 <sub>Go: [TOC](#tableofcontents)</sub>
 
 <a name="primusduplexprototype"></a>

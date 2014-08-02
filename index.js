@@ -179,7 +179,8 @@ Extra constructor options, an additional parameter to [`readable.read`](http://n
 "use strict";
 
 var util = require('util'),
-    stream = require('stream');
+    stream = require('stream'),
+    crypto = require('crypto');
 
 /**
 Creates a new `PrimusDuplex` object which exerts back-pressure over a [Primus](https://github.com/primus/primus) connection.
@@ -198,6 +199,8 @@ Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for
   - `{Function} [encode_data(chunk, encoding, start, end)]` Optional encoding function for data passed to [`writable.write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback). `chunk` and `encoding` are as described in the `writable.write` documentation. The difference is that `encode_data` is synchronous (it must return the encoded data) and it should only encode data between the `start` and `end` positions in `chunk`. Defaults to a function which does `chunk.toString('base64', start, end)`.
 
   - `{Function} [decode_data(chunk)]` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a functon which does `new Buffer(chunk, 'base64')`.
+
+  - `{Integer} [seq_size]` Number of random bytes to use for sequence numbers. `PrimusDuplex` sends sequence numbers with messages so it knows it has up-to-date information from its peer. The sequence numbers are random so we know the peer has actually read data from the connection. Defaults to 20.
 */
 function PrimusDuplex(msg_stream, options)
 {
@@ -205,8 +208,9 @@ function PrimusDuplex(msg_stream, options)
 
     options = options || {};
 
+    this._seq_size = options.seq_size || 20;
     this._msg_stream = msg_stream;
-    this._seq = 0;
+    this._seq = crypto.randomBytes(this._seq_size).toString('base64');
     this._remote_free = 0;
     this._data = null;
     this._encoding = null;
@@ -406,7 +410,7 @@ PrimusDuplex.prototype._send = function ()
 
     var cb, size = Math.min(this._remote_free, this._data.length - this._index);
 
-    this._seq += 1;
+    this._seq = crypto.randomBytes(this._seq_size).toString('base64');
 
     this._msg_stream.write(
     {

@@ -236,7 +236,8 @@
 	"use strict";
 
 	var util = __webpack_require__(4),
-	    stream = __webpack_require__(5);
+	    stream = __webpack_require__(5),
+	    crypto = __webpack_require__(2);
 
 	/**
 	Creates a new `PrimusDuplex` object which exerts back-pressure over a [Primus](https://github.com/primus/primus) connection.
@@ -250,11 +251,11 @@
 
 	@param {Object} [options] Configuration options. This is passed onto `stream.Duplex` and can contain the following extra properties:
 
-	- `{Boolean} [initiate_handshake]` Whether to send a handshake message to the other side of the connection. `PrimusDuplex` needs to exchange a handshake message so both sides know how much data the other can initially buffer. You should pass `initiate_handshake` as `true` on _one side only after connection has been established_. The simplest way to do this is on the server as soon as Primus emits a `connection` event. Defaults to `false`.
+	  - `{Boolean} [initiate_handshake]` Whether to send a handshake message to the other side of the connection. `PrimusDuplex` needs to exchange a handshake message so both sides know how much data the other can initially buffer. You should pass `initiate_handshake` as `true` on _one side only after connection has been established_. The simplest way to do this is on the server as soon as Primus emits a `connection` event. Defaults to `false`.
 
-	- `{Function} encode_data(chunk, encoding, start, end)` Optional encoding function for data passed to [`writable.write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback). `chunk` and `encoding` are as described in the `writable.write` documentation. The difference is that `encode_data` is synchronous (it must return the encoded data) and it should only encode data between the `start` and `end` positions in `chunk`. Defaults to a function which does `chunk.toString('base64', start, end)`.
+	  - `{Function} [encode_data(chunk, encoding, start, end)]` Optional encoding function for data passed to [`writable.write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback). `chunk` and `encoding` are as described in the `writable.write` documentation. The difference is that `encode_data` is synchronous (it must return the encoded data) and it should only encode data between the `start` and `end` positions in `chunk`. Defaults to a function which does `chunk.toString('base64', start, end)`.
 
-	- `{Function} decode_data(chunk)` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a functon which does `new Buffer(chunk, 'base64')`.
+	  - `{Function} [decode_data(chunk)]` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a functon which does `new Buffer(chunk, 'base64')`.
 	*/
 	function PrimusDuplex(msg_stream, options)
 	{
@@ -262,8 +263,9 @@
 
 	    options = options || {};
 
+	    this._seq_size = options.seq_size || 20;
 	    this._msg_stream = msg_stream;
-	    this._seq = 0;
+	    this._seq = crypto.randomBytes(this._seq_size).toString('base64');
 	    this._remote_free = 0;
 	    this._data = null;
 	    this._encoding = null;
@@ -308,7 +310,13 @@
 	            if (data.type === 'data')
 	            {
 	                ths._remote_seq = data.seq;
-	                ths.push(ths._decode_data(data.data));
+
+	                // work around https://github.com/primus/primus/issues/263
+	                /* istanbul ignore else */
+	                if (!ths._readableState.ended)
+	                {
+	                    ths.push(ths._decode_data(data.data));
+	                }
 	            }
 	            else if (data.type === 'status')
 	            {
@@ -457,7 +465,7 @@
 
 	    var cb, size = Math.min(this._remote_free, this._data.length - this._index);
 
-	    this._seq += 1;
+	    this._seq = crypto.randomBytes(this._seq_size).toString('base64');
 
 	    this._msg_stream.write(
 	    {

@@ -718,6 +718,68 @@ function max_write_size(make_client)
     };
 }
 
+function read_overflow(get_sender, get_recipient)
+{
+    return function (cb)
+    {
+        get_recipient().unshift(new Buffer(1));
+        get_recipient().on('error', function ()
+        {
+            cb();
+        });
+        get_sender().write(new Buffer(100));
+    };
+}
+
+function disable_read_overflow(make_client)
+{
+    return function (cb)
+    {
+        make_client(function (err, client_duplex)
+        {
+            if (err) { return cb(err); }
+
+            var size = 0;
+
+            client_duplex.unshift(new Buffer(1));
+
+            client_duplex.on('end', function ()
+            {
+                expect(size).to.equal(101);
+                this.end();
+                cb();
+            });
+
+            client_duplex.on('readable', function ()
+            {
+                var data;
+
+                while (true)
+                {
+                    data = this.read();
+
+                    if (data === null)
+                    {
+                        break;
+                    }
+
+                    size += data.length;
+                }
+            });
+
+            primus.once('connection', function (spark2)
+            {
+                var spark_duplex2 = new PrimusDuplex(spark2,
+                {
+                    initiate_handshake: true
+                });
+
+                spark_duplex2.end(new Buffer(100));
+            });
+        });
+    };
+}
+
 function both(f, gc, gs)
 {
     return function (cb)
@@ -857,13 +919,31 @@ describe('PrimusDuplex (Node)', function ()
            }));
        }));
 
-    it('should support a maximum remote free size',
+    it('should support a maximum write size',
        max_write_size(function (cb)
        {
            cb(null, new PrimusDuplex(new Socket(client_url),
            {
                max_write_size: 16,
                highWaterMark: 100
+           }));
+       }));
+
+    it('should detect read overflow from client to server',
+       read_overflow(get_client, get_server));
+
+    it('should detect read overflow from server to client',
+       read_overflow(get_server, get_client));
+
+    it('should detect read overflow between client and server',
+       both(read_overflow, get_client, get_server));
+
+    it('should support disabling read overflow',
+       disable_read_overflow(function (cb)
+       {
+           cb(null, new PrimusDuplex(new Socket(client_url),
+           {
+               check_read_overflow: false
            }));
        }));
 });

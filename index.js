@@ -202,6 +202,8 @@ Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for
 
   - `{Integer} [max_write_size]` Maximum number of bytes to write onto the Primus connection at once, regardless of how many bytes the peer is free to receive. Defaults to 0 (no limit).
 
+  - `{Boolean} [check_read_overflow]` Whether to check if more data than expected is being received. If `true` and the high-water mark for reading is exceeded then the `PrimusDuplex` object emits an `error` event. This should not normally occur unless you add data yourself using [`readable.unshift`](http://nodejs.org/api/stream.html#stream_readable_unshift_chunk) &mdash; in which case you should set `check_read_overflow` to `false`. Defaults to `true`.
+
   - `{Integer} [seq_size]` Number of random bytes to use for sequence numbers. `PrimusDuplex` sends sequence numbers with messages so it knows it has up-to-date information from its peer. The sequence numbers are random so the peer has to read the data to obtain them. It can't guess a sequence number and lie about the amount of space it has free in its buffer in order to get the sender to buffer more data.
   
     Note that if you're worried about a malicious peer using a TCP implementation which doesn't ACK data in order to get the sender to buffer more data, you should consider modifying the TCP parameters in your operating system related to timeout, retransmission limits and keep-alive. On Linux, see the `tcp(7)` man page.
@@ -214,6 +216,7 @@ function PrimusDuplex(msg_stream, options)
 
     this._seq_size = options.seq_size || 20;
     this._max_write_size = options.max_write_size || 0;
+    this._check_read_overflow = options.check_read_overflow !== false;
     this._msg_stream = msg_stream;
     this._seq = crypto.randomBytes(this._seq_size).toString('base64');
     this._remote_free = 0;
@@ -249,7 +252,7 @@ function PrimusDuplex(msg_stream, options)
         }
 
         ths._remote_free = ths._max_write_size > 0 ?
-                Math.min(data.hwm, ths._max_write_size) : data.hwm;
+                Math.min(data.free, ths._max_write_size) : data.free;
 
         if (!ths._handshake_sent)
         {
@@ -266,7 +269,18 @@ function PrimusDuplex(msg_stream, options)
                 /* istanbul ignore else */
                 if (!ths._readableState.ended)
                 {
-                    ths.push(ths._decode_data(data.data));
+                    var ddata = ths._decode_data(data.data);
+
+                    if (ths._check_read_overflow &&
+                        ((ths._readableState.length + ddata.length) >
+                         ths._readableState.highWaterMark))
+                    {
+                        ths.emit('error', new Error('too much data'));
+                    }
+                    else
+                    {
+                        ths.push(ddata);
+                    }
                 }
             }
             else if (data.type === 'status')
@@ -346,7 +360,7 @@ PrimusDuplex.prototype._send_handshake = function ()
     this._msg_stream.write(
     {
         type: 'handshake',
-        hwm: this._readableState.highWaterMark
+        free: this._readableState.highWaterMark - this._readableState.length
     });
 };
 

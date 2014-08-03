@@ -1233,6 +1233,54 @@ describe('PrimusDuplex (browser)', function ()
         };
     }
 
+    function read_overflow_client_server(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            get_server().unshift(new Buffer(1));
+            get_server().on('error', function ()
+            {
+                cb();
+            });
+            in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                client_duplex.write(new NodeBuffer(100));
+                cb();
+            }, get_client_name(), null, function (err)
+            {
+                if (err) { return cb(err); }
+            });
+        };
+    }
+
+    function read_overflow_server_client(get_client_name, get_server)
+    {
+        return function (cb)
+        {
+            in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                client_duplex.unshift(new NodeBuffer(1));
+                client_duplex.on('error', function ()
+                {
+                    this.errored = true;
+                });
+                cb();
+            }, get_client_name(), null, function (err)
+            {
+                if (err) { return cb(err); }
+                get_server().write(new Buffer(100));
+            });
+
+            wait_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                cb(null, client_duplex.errored);
+            }, get_client_name(), null, cb);
+        };
+    }
+
     it('should send a single byte from client to server',
        single_byte_client_server(get_client_duplex_name, get_server));
 
@@ -1588,7 +1636,7 @@ describe('PrimusDuplex (browser)', function ()
         });
     });
 
-    it('should support allowHalfOpen=false', function (cb)
+    it('should support a maximum write size', function (cb)
     {
         var client_out = crypto.randomBytes(64),
             server_out = crypto.randomBytes(64),
@@ -1673,5 +1721,72 @@ describe('PrimusDuplex (browser)', function ()
 
             cb();
         });
+    });
+
+    it('should detect read overflow from client to server',
+       read_overflow_client_server(get_client_duplex_name, get_server));
+
+    it('should detect read overflow from server to client',
+       read_overflow_server_client(get_client_duplex_name, get_server));
+
+    it('should detect read overflow between client and server',
+       both(read_overflow_client_server,
+            read_overflow_server_client,
+            get_client_duplex_name,
+            get_server));
+
+    it.only('should support disabling read overflow', function (cb)
+    {
+        primus.once('connection', function (spark2)
+        {
+            var spark_duplex2 = new PrimusDuplex(spark2,
+            {
+                initiate_handshake: true
+            });
+
+            spark_duplex2.end(new Buffer(100));
+        });
+
+        in_browser(function (url, cb)
+        {
+            var client_duplex = new PrimusDuplex(new Primus(url),
+                {
+                    check_read_overflow: false
+                }),
+                name = 'client_' + client_index,
+                size = 0;
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.unshift(new NodeBuffer(1));
+
+            client_duplex.on('end', function ()
+            {
+                this.end();
+                cb(null, size);
+            });
+
+            client_duplex.on('readable', function ()
+            {
+                var data;
+
+                while (true)
+                {
+                    data = this.read();
+
+                    if (data === null)
+                    {
+                        break;
+                    }
+
+                    size += data.length;
+                }
+            });
+        }, client_url, function (size, cb)
+        {
+            expect(size).to.equal(101);
+            cb();
+        }, cb);
     });
 });

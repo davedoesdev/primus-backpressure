@@ -1735,7 +1735,7 @@ describe('PrimusDuplex (browser)', function ()
             get_client_duplex_name,
             get_server));
 
-    it.only('should support disabling read overflow', function (cb)
+    it('should support disabling read overflow', function (cb)
     {
         primus.once('connection', function (spark2)
         {

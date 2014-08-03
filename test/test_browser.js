@@ -1588,7 +1588,7 @@ describe('PrimusDuplex (browser)', function ()
         });
     });
 
-    it.only('should support allowHalfOpen=false', function (cb)
+    it('should support allowHalfOpen=false', function (cb)
     {
         var client_out = crypto.randomBytes(64),
             server_out = crypto.randomBytes(64),

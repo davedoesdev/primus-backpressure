@@ -195,7 +195,11 @@ Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for
 
   - `{Function} [decode_data(chunk)]` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a functon which does `new Buffer(chunk, 'base64')`.
 
-  - `{Integer} [seq_size]` Number of random bytes to use for sequence numbers. `PrimusDuplex` sends sequence numbers with messages so it knows it has up-to-date information from its peer. The sequence numbers are random so we know the peer has actually read data from the connection. Defaults to 20.
+  - `{Integer} [max_write_size]` Maximum number of bytes to write onto the Primus connection at once, regardless of how many bytes the peer is free to receive. Defaults to 0 (no limit).
+
+  - `{Integer} [seq_size]` Number of random bytes to use for sequence numbers. `PrimusDuplex` sends sequence numbers with messages so it knows it has up-to-date information from its peer. The sequence numbers are random so the peer has to read the data to obtain them. It can't guess a sequence number and lie about the amount of space it has free in its buffer in order to get the sender to buffer more data.
+  
+    Note that if you're worried about a malicious peer using a TCP implementation which doesn't ACK data in order to get the sender to buffer more data, you should consider modifying the TCP parameters in your operating system related to timeout, retransmission limits and keep-alive. On Linux, see the `tcp(7)` man page.
 
 <sub>Go: [TOC](#tableofcontents)</sub>
 

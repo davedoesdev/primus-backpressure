@@ -1587,4 +1587,91 @@ describe('PrimusDuplex (browser)', function ()
             if (server_done) { cb(); }
         });
     });
+
+    it.only('should support allowHalfOpen=false', function (cb)
+    {
+        var client_out = crypto.randomBytes(64),
+            server_out = crypto.randomBytes(64),
+            server_in = [];
+
+        primus.once('connection', function (spark2)
+        {
+            var duplex = new PrimusDuplex(spark2,
+            {
+                max_write_size: 16,
+                highWaterMark: 100,
+                initiate_handshake: true
+            });
+
+            duplex.on('readable', function ()
+            {
+                var data = this.read();
+
+                if (data)
+                {
+                    expect(data.length).to.equal(16);
+                    server_in.push(data);
+                }
+            });
+
+            duplex.on('end', function ()
+            {
+                this.end();
+            });
+
+            duplex.end(server_out);
+        });
+
+        in_browser(function (url, client_out, cb)
+        {
+            var client_duplex = new PrimusDuplex(new Primus(url),
+                {
+                    max_write_size: 16,
+                    highWaterMark: 100
+                }),
+                name = 'client_' + client_index,
+                client_in = [];
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.on('handshake', function ()
+            {
+                this.end(client_out, 'base64');
+            });
+
+            client_duplex.on('end', function ()
+            {
+                cb(null, client_in);
+            });
+
+            client_duplex.on('readable', function ()
+            {
+                var data = this.read();
+
+                if (data)
+                {
+                    client_in.push(data.toString('base64'));
+                }
+            });
+        },
+        client_url,
+        client_out.toString('base64'),
+        null,
+        function (err, client_in)
+        {
+            if (err) { return cb(err); }
+
+            expect(client_in.length).to.equal(4);
+            expect(server_in.length).to.equal(4);
+
+            expect(Buffer.concat(client_in.map(function (s)
+            {
+                return new Buffer(s, 'base64');
+            }))).to.eql(server_out);
+            expect(Buffer.concat(server_in)).to.eql(client_out);
+
+            cb();
+        });
+    });
 });

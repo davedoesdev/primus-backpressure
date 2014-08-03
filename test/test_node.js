@@ -640,6 +640,84 @@ function disallow_half_open(make_client)
     };
 }
 
+function max_write_size(make_client)
+{
+    return function (cb)
+    {
+        make_client(function (err, client_duplex)
+        {
+            if (err) { return cb(err); }
+
+            var client_out = crypto.randomBytes(64),
+                server_out = crypto.randomBytes(64),
+                client_in = [],
+                server_in = [];
+
+            function check()
+            {
+                expect(client_in.length).to.be.at.most(4);
+                expect(server_in.length).to.be.at.most(4);
+
+                if ((client_in.length === 4) &&
+                    (server_in.length === 4))
+                {
+                    expect(Buffer.concat(client_in)).to.eql(server_out);
+                    expect(Buffer.concat(server_in)).to.eql(client_out);
+                    client_duplex.end();
+                }
+            }
+
+            client_duplex.on('handshake', function ()
+            {
+                this.write(client_out);
+            });
+
+            client_duplex.on('end', cb);
+
+            client_duplex.on('readable', function ()
+            {
+                var data = this.read();
+
+                if (data)
+                {
+                    expect(data.length).to.equal(16);
+                    client_in.push(data);
+                    check();
+                }
+            });
+
+            primus.once('connection', function (spark2)
+            {
+                var spark_duplex2 = new PrimusDuplex(spark2,
+                {
+                    max_write_size: 16,
+                    highWaterMark: 100,
+                    initiate_handshake: true
+                });
+
+                spark_duplex2.on('readable', function ()
+                {
+                    var data = this.read();
+
+                    if (data)
+                    {
+                        expect(data.length).to.equal(16);
+                        server_in.push(data);
+                        check();
+                    }
+                });
+
+                spark_duplex2.on('end', function ()
+                {
+                    this.end();
+                });
+
+                spark_duplex2.write(server_out);
+            });
+        });
+    };
+}
+
 function both(f, gc, gs)
 {
     return function (cb)
@@ -771,11 +849,21 @@ describe('PrimusDuplex (Node)', function ()
        write_before_handshaken(make_default_client));
 
     it('should support allowHalfOpen=false',
-        disallow_half_open(function (cb)
-        {
-            cb(null, new PrimusDuplex(new Socket(client_url),
-            {
-                allowHalfOpen: false
-            }));
-        }));
+       disallow_half_open(function (cb)
+       {
+           cb(null, new PrimusDuplex(new Socket(client_url),
+           {
+               allowHalfOpen: false
+           }));
+       }));
+
+    it('should support a maximum remote free size',
+       max_write_size(function (cb)
+       {
+           cb(null, new PrimusDuplex(new Socket(client_url),
+           {
+               max_write_size: 16,
+               highWaterMark: 100
+           }));
+       }));
 });

@@ -256,6 +256,12 @@
 	  - `{Function} [encode_data(chunk, encoding, start, end)]` Optional encoding function for data passed to [`writable.write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback). `chunk` and `encoding` are as described in the `writable.write` documentation. The difference is that `encode_data` is synchronous (it must return the encoded data) and it should only encode data between the `start` and `end` positions in `chunk`. Defaults to a function which does `chunk.toString('base64', start, end)`.
 
 	  - `{Function} [decode_data(chunk)]` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a functon which does `new Buffer(chunk, 'base64')`.
+
+	  - `{Integer} [seq_size]` Number of random bytes to use for sequence numbers. `PrimusDuplex` sends sequence numbers with messages so it knows it has up-to-date information from its peer. The sequence numbers are random so the peer has to read the data to obtain them. It can't guess a sequence number and lie about the amount of space it has free in its buffer in order to get the sender to buffer more data.
+	  
+	  Note that if you're worried about a malicious peer using a TCP implementation which doesn't ACK data in order to get the sender to buffer more data, you should consider modifying the TCP parameters in your operating system related to timeout, retransmission limits and keep-alive. On Linux, see the `tcp(7)` man page.
+	  
+	  - `{Integer} [max_write_size]` Maximum number of bytes to write onto the Primus connectionat once, regardless of how many bytes the peer is free to receive. Defaults to 0 (no limit).
 	*/
 	function PrimusDuplex(msg_stream, options)
 	{
@@ -264,6 +270,7 @@
 	    options = options || {};
 
 	    this._seq_size = options.seq_size || 20;
+	    this._max_write_size = options.max_write_size || 0;
 	    this._msg_stream = msg_stream;
 	    this._seq = crypto.randomBytes(this._seq_size).toString('base64');
 	    this._remote_free = 0;
@@ -298,7 +305,8 @@
 	            return ths.emit('error', new Error('expected handshake, got: ' + data.type));
 	        }
 
-	        ths._remote_free = data.hwm;
+	        ths._remote_free = ths._max_write_size > 0 ?
+	                Math.min(data.hwm, ths._max_write_size) : data.hwm;
 
 	        if (!ths._handshake_sent)
 	        {
@@ -322,7 +330,8 @@
 	            {
 	                if (data.seq === ths._seq)
 	                {
-	                    ths._remote_free = data.free;
+	                    ths._remote_free = ths._max_write_size > 0 ?
+	                            Math.min(data.free, ths._max_write_size) : data.free;
 	                    ths._send();
 	                }
 	            }
@@ -2298,7 +2307,7 @@
 	 *     prototype.
 	 * @param {function} superCtor Constructor function to inherit prototype from.
 	 */
-	exports.inherits = __webpack_require__(23);
+	exports.inherits = __webpack_require__(24);
 
 	exports._extend = function(origin, add) {
 	  // Don't do anything if add isn't an object
@@ -2316,7 +2325,7 @@
 	  return Object.prototype.hasOwnProperty.call(obj, prop);
 	}
 	
-	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }()), __webpack_require__(14)))
+	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }()), __webpack_require__(15)))
 
 /***/ },
 /* 5 */
@@ -2345,8 +2354,8 @@
 
 	module.exports = Stream;
 
-	var EE = __webpack_require__(15).EventEmitter;
-	var inherits = __webpack_require__(24);
+	var EE = __webpack_require__(14).EventEmitter;
+	var inherits = __webpack_require__(23);
 
 	inherits(Stream, EE);
 	Stream.Readable = __webpack_require__(16);
@@ -3034,75 +3043,6 @@
 /* 14 */
 /***/ function(module, exports, __webpack_require__) {
 
-	// shim for using process in browser
-
-	var process = module.exports = {};
-
-	process.nextTick = (function () {
-	    var canSetImmediate = typeof window !== 'undefined'
-	    && window.setImmediate;
-	    var canPost = typeof window !== 'undefined'
-	    && window.postMessage && window.addEventListener
-	    ;
-
-	    if (canSetImmediate) {
-	        return function (f) { return window.setImmediate(f) };
-	    }
-
-	    if (canPost) {
-	        var queue = [];
-	        window.addEventListener('message', function (ev) {
-	            var source = ev.source;
-	            if ((source === window || source === null) && ev.data === 'process-tick') {
-	                ev.stopPropagation();
-	                if (queue.length > 0) {
-	                    var fn = queue.shift();
-	                    fn();
-	                }
-	            }
-	        }, true);
-
-	        return function nextTick(fn) {
-	            queue.push(fn);
-	            window.postMessage('process-tick', '*');
-	        };
-	    }
-
-	    return function nextTick(fn) {
-	        setTimeout(fn, 0);
-	    };
-	})();
-
-	process.title = 'browser';
-	process.browser = true;
-	process.env = {};
-	process.argv = [];
-
-	function noop() {}
-
-	process.on = noop;
-	process.addListener = noop;
-	process.once = noop;
-	process.off = noop;
-	process.removeListener = noop;
-	process.removeAllListeners = noop;
-	process.emit = noop;
-
-	process.binding = function (name) {
-	    throw new Error('process.binding is not supported');
-	}
-
-	// TODO(shtylman)
-	process.cwd = function () { return '/' };
-	process.chdir = function (dir) {
-	    throw new Error('process.chdir is not supported');
-	};
-
-
-/***/ },
-/* 15 */
-/***/ function(module, exports, __webpack_require__) {
-
 	// Copyright Joyent, Inc. and other Node contributors.
 	//
 	// Permission is hereby granted, free of charge, to any person obtaining a
@@ -3406,6 +3346,75 @@
 	function isUndefined(arg) {
 	  return arg === void 0;
 	}
+
+
+/***/ },
+/* 15 */
+/***/ function(module, exports, __webpack_require__) {
+
+	// shim for using process in browser
+
+	var process = module.exports = {};
+
+	process.nextTick = (function () {
+	    var canSetImmediate = typeof window !== 'undefined'
+	    && window.setImmediate;
+	    var canPost = typeof window !== 'undefined'
+	    && window.postMessage && window.addEventListener
+	    ;
+
+	    if (canSetImmediate) {
+	        return function (f) { return window.setImmediate(f) };
+	    }
+
+	    if (canPost) {
+	        var queue = [];
+	        window.addEventListener('message', function (ev) {
+	            var source = ev.source;
+	            if ((source === window || source === null) && ev.data === 'process-tick') {
+	                ev.stopPropagation();
+	                if (queue.length > 0) {
+	                    var fn = queue.shift();
+	                    fn();
+	                }
+	            }
+	        }, true);
+
+	        return function nextTick(fn) {
+	            queue.push(fn);
+	            window.postMessage('process-tick', '*');
+	        };
+	    }
+
+	    return function nextTick(fn) {
+	        setTimeout(fn, 0);
+	    };
+	})();
+
+	process.title = 'browser';
+	process.browser = true;
+	process.env = {};
+	process.argv = [];
+
+	function noop() {}
+
+	process.on = noop;
+	process.addListener = noop;
+	process.once = noop;
+	process.off = noop;
+	process.removeListener = noop;
+	process.removeAllListeners = noop;
+	process.emit = noop;
+
+	process.binding = function (name) {
+	    throw new Error('process.binding is not supported');
+	}
+
+	// TODO(shtylman)
+	process.cwd = function () { return '/' };
+	process.chdir = function (dir) {
+	    throw new Error('process.chdir is not supported');
+	};
 
 
 /***/ },
@@ -4253,7 +4262,7 @@
 
 	Readable.ReadableState = ReadableState;
 
-	var EE = __webpack_require__(15).EventEmitter;
+	var EE = __webpack_require__(14).EventEmitter;
 
 	/*<replacement>*/
 	if (!EE.listenerCount) EE.listenerCount = function(emitter, type) {
@@ -5179,7 +5188,7 @@
 	  return -1;
 	}
 	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(14)))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(15)))
 
 /***/ },
 /* 30 */
@@ -5573,7 +5582,7 @@
 	  state.ended = true;
 	}
 	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(14)))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(15)))
 
 /***/ },
 /* 31 */
@@ -5669,7 +5678,7 @@
 	  }
 	}
 	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(14)))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(15)))
 
 /***/ },
 /* 32 */

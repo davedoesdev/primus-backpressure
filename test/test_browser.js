@@ -1213,23 +1213,31 @@ describe('PrimusDuplex (browser)', function ()
             {
                 var client_duplex = client_duplexes[name];
 
-                client_duplex.on('error', function ()
+                client_duplex.on('error', function (err)
                 {
-                    this.errored = true;
+                    this.errored = err.message;
                 });
 
                 cb();
             }, get_client_name(), null, function (err)
             {
                 if (err) { return cb(err); }
-                get_server()._msg_stream.write({ type: 'foo' });
+                get_server().write('a', function (err)
+                {
+                    if (err) { return cb(err); }
+                    get_server()._msg_stream.write({ type: 'foo' });
+                });
             });
 
             wait_browser(function (name, cb)
             {
                 var client_duplex = client_duplexes[name];
-                cb(null, !!client_duplex.errored);
-            }, get_client_name(), null, cb);
+                cb(null, !!client_duplex.errored, client_duplex.errored);
+            }, get_client_name(), function (msg, cb)
+            {
+                expect(msg).to.equal('unknown type: foo');
+                cb();
+            }, cb);
         };
     }
 
@@ -1237,9 +1245,14 @@ describe('PrimusDuplex (browser)', function ()
     {
         return function (cb)
         {
-            get_server().unshift(new Buffer(1));
-            get_server().on('error', function ()
+            get_server()._msg_stream.once('data', function ()
             {
+                get_server().unshift(new Buffer(1));
+            });
+
+            get_server().on('error', function (err)
+            {
+                expect(err.message).to.equal('too much data');
                 cb();
             });
             in_browser(function (name, cb)
@@ -1261,23 +1274,35 @@ describe('PrimusDuplex (browser)', function ()
             in_browser(function (name, cb)
             {
                 var client_duplex = client_duplexes[name];
-                client_duplex.unshift(new NodeBuffer(1));
-                client_duplex.on('error', function ()
+
+                client_duplex.once('readable', function ()
                 {
-                    this.errored = true;
+                    this.read();
+                    client_duplex.unshift(new NodeBuffer(2));
                 });
+
+                client_duplex.on('error', function (err)
+                {
+                    this.errored = err.message;
+                });
+
                 cb();
             }, get_client_name(), null, function (err)
             {
                 if (err) { return cb(err); }
+                get_server().write('a');
                 get_server().write(new Buffer(100));
             });
 
             wait_browser(function (name, cb)
             {
                 var client_duplex = client_duplexes[name];
-                cb(null, client_duplex.errored);
-            }, get_client_name(), null, cb);
+                cb(null, !!client_duplex.errored, client_duplex.errored);
+            }, get_client_name(), function (msg, cb)
+            {
+                expect(msg).to.equal('too much data');
+                cb();
+            }, cb);
         };
     }
 
@@ -1412,18 +1437,15 @@ describe('PrimusDuplex (browser)', function ()
             var duplex = new PrimusDuplex(spark2);
             duplex.name = 'spark2';
 
-            duplex.on('handshake', function ()
-            {
-                spark_duplex2 = duplex;
-                if (client_duplex_name2) { doit(); }
-            });
-
             duplex.on('end', function ()
             {
                 this.end();
             });
 
             duplex._send_handshake();
+
+            spark_duplex2 = duplex;
+            if (client_duplex_name2) { doit(); }
         });
 
         in_browser(function (url, cb)
@@ -1452,11 +1474,6 @@ describe('PrimusDuplex (browser)', function ()
         {
             var duplex = new PrimusDuplex(spark2);
 
-            duplex.on('handshake', function ()
-            {
-                cb(new Error('should not be called'));
-            });
-
             duplex.on('end', function ()
             {
                 this.end();
@@ -1479,9 +1496,12 @@ describe('PrimusDuplex (browser)', function ()
             client_index += 1;
             client_duplexes[name] = client_duplex;
 
-            client_duplex.on('error', function ()
+            client_duplex.on('error', function (err)
             {
-                this.on('end', cb);
+                this.on('end', function ()
+                {
+                    cb(null, err.message);
+                });
                 this.end();
                 // have to read null to get end event
                 client_duplex.on('readable', function ()
@@ -1492,7 +1512,11 @@ describe('PrimusDuplex (browser)', function ()
         },
         client_url,
         null,
-        cb);
+        function (err, msg)
+        {
+            expect(msg).to.equal('expected handshake, got: bar');
+            cb(err);
+        });
     });
 
     it('should support writing before handshaken', function (cb)
@@ -1590,6 +1614,8 @@ describe('PrimusDuplex (browser)', function ()
                 server_done = true;
                 if (client_done) { cb(); }
             });
+
+            duplex.write('a');
         });
 
         in_browser(function (url, cb)
@@ -1598,28 +1624,29 @@ describe('PrimusDuplex (browser)', function ()
                 {
                     allowHalfOpen: false
                 }),
-                name = 'client_' + client_index;
+                name = 'client_' + client_index,
+                finished = false;
 
             client_index += 1;
             client_duplexes[name] = client_duplex;
 
-            client_duplex.on('handshake', function ()
+            client_duplex.on('finish', function ()
             {
-                var finished = false;
+                finished = true;
+            });
 
-                this.on('finish', function ()
-                {
-                    finished = true;
-                });
+            client_duplex.on('end', function ()
+            {
+                cb(null, finished);
+            });
 
-                this.on('end', function ()
-                {
-                    cb(null, finished);
-                });
+            client_duplex.once('readable', function ()
+            {
+                this.read();
 
-                this.on('readable', function ()
+                client_duplex.on('readable', function ()
                 {
-                    this.read();
+                    while (this.read());
                 });
 
                 this.end();
@@ -1683,11 +1710,6 @@ describe('PrimusDuplex (browser)', function ()
             client_index += 1;
             client_duplexes[name] = client_duplex;
 
-            client_duplex.on('handshake', function ()
-            {
-                this.end(client_out, 'base64');
-            });
-
             client_duplex.on('end', function ()
             {
                 cb(null, client_in);
@@ -1702,6 +1724,8 @@ describe('PrimusDuplex (browser)', function ()
                     client_in.push(data.toString('base64'));
                 }
             });
+
+            client_duplex.end(client_out, 'base64');
         },
         client_url,
         client_out.toString('base64'),
@@ -1759,7 +1783,10 @@ describe('PrimusDuplex (browser)', function ()
             client_index += 1;
             client_duplexes[name] = client_duplex;
 
-            client_duplex.unshift(new NodeBuffer(1));
+            client_duplex._msg_stream.once('data', function ()
+            {
+                client_duplex.unshift(new NodeBuffer(1));
+            });
 
             client_duplex.on('end', function ()
             {

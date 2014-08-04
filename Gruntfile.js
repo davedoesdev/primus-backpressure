@@ -42,7 +42,7 @@ module.exports = function (grunt)
         },
 
         apidox: {
-            input: ['index.js', 'events_doc.js'],
+            input: 'index.js',
             output: 'README.md',
             fullSourceDescription: true,
             extraHeadingLevels: 1

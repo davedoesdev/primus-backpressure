@@ -409,12 +409,17 @@ function unknown_message(get_sender, get_recipient)
 {
     return function (cb)
     {
-        get_recipient().on('error', function ()
+        get_recipient().on('error', function (err)
         {
+            expect(err.message).to.equal('unknown type: foo');
             cb();
         });
 
-        get_sender()._msg_stream.write({ type: 'foo' });
+        get_sender().write('a', function (err)
+        {
+            if (err) { return cb(err); }
+            get_sender()._msg_stream.write({ type: 'foo' });
+        });
     };
 }
 
@@ -428,38 +433,35 @@ function default_options(make_default_client, get_client)
 
             primus.once('connection', function (spark2)
             {
-                var spark_duplex2 = new PrimusDuplex(spark2);
+                var spark_duplex2 = new PrimusDuplex(spark2),
+                    done1 = false,
+                    done2 = false;
 
-                spark_duplex2.on('handshake', function ()
+                function done()
                 {
-                    var done1 = false, done2 = false;
+                    client_duplex.on('end', cb);
+                    client_duplex.end();
+                    // multi_byte will read the null so end is emitted
+                }
 
-                    function done()
-                    {
-                        client_duplex.on('end', cb);
-                        client_duplex.end();
-                        // multi_byte will read the null so end is emitted
-                    }
+                both(multi_byte, get_client, get_server)(function (err)
+                {
+                    if (err) { return cb(err); }
+                    done1 = true;
+                    if (done2) { done(); }
+                });
 
-                    both(multi_byte, get_client, get_server)(function (err)
-                    {
-                        if (err) { return cb(err); }
-                        done1 = true;
-                        if (done2) { done(); }
-                    });
-
-                    both(multi_byte, function ()
-                    {
-                        return client_duplex;
-                    }, function ()
-                    {
-                        return spark_duplex2;
-                    })(function (err)
-                    {
-                        if (err) { return cb(err); }
-                        done2 = true;
-                        if (done1) { done(); }
-                    });
+                both(multi_byte, function ()
+                {
+                    return client_duplex;
+                }, function ()
+                {
+                    return spark_duplex2;
+                })(function (err)
+                {
+                    if (err) { return cb(err); }
+                    done2 = true;
+                    if (done1) { done(); }
                 });
 
                 spark_duplex2.on('end', function ()
@@ -481,25 +483,21 @@ function emit_error(make_default_client)
         {
             if (err) { return cb(err); }
 
-            client_duplex.on('error', function ()
+            client_duplex.on('error', function (err)
             {
+                expect(err.message).to.equal('expected handshake, got: bar');
                 this.on('end', cb);
                 this.end();
                 // have to read null to get end event
                 this.on('readable', function ()
                 {
-                    this.read();
+                    while (this.read());
                 });
             });
 
             primus.once('connection', function (spark2)
             {
                 var spark_duplex2 = new PrimusDuplex(spark2);
-
-                spark_duplex2.on('handshake', function ()
-                {
-                    cb(new Error('should not be called'));
-                });
 
                 spark_duplex2.on('end', function ()
                 {
@@ -509,7 +507,7 @@ function emit_error(make_default_client)
                 // have to read null to get end event
                 spark_duplex2.on('readable', function ()
                 {
-                    this.read();
+                    while (this.read());
                 });
 
                 spark_duplex2._msg_stream.write({ type: 'bar' });
@@ -583,31 +581,25 @@ function disallow_half_open(make_client)
         {
             if (err) { return cb(err); }
 
-            var client_done = false, server_done = false;
+            var client_done = false,
+                server_done = false,
+                finished = false;
 
-            client_duplex.on('handshake', function ()
+            client_duplex.on('finish', function ()
             {
-                var finished = false;
+                finished = true;
+            });
 
-                this.on('finish', function ()
-                {
-                    finished = true;
-                });
+            client_duplex.on('end', function ()
+            {
+                expr(expect(finished).to.be.true);
+                client_done = true;
+                if (server_done) { cb(); }
+            });
 
-                this.on('end', function ()
-                {
-                    expr(expect(finished).to.be.true);
-                    client_done = true;
-                    if (server_done) { cb(); }
-                });
-
-                this.on('readable', function ()
-                {
-                    this.read();
-                });
-
-                // should close for read too
-                this.end();
+            client_duplex.on('readable', function ()
+            {
+                while (this.read());
             });
 
             primus.once('connection', function (spark2)
@@ -625,7 +617,7 @@ function disallow_half_open(make_client)
 
                 spark_duplex2.on('readable', function ()
                 {
-                    this.read();
+                    while (this.read());
                 });
 
                 // should close for write after receiving end
@@ -635,6 +627,9 @@ function disallow_half_open(make_client)
                     server_done = true;
                     if (client_done) { cb(); }
                 });
+
+                // should close for read too
+                client_duplex.end();
             });
         });
     };
@@ -666,11 +661,6 @@ function max_write_size(make_client)
                     client_duplex.end();
                 }
             }
-
-            client_duplex.on('handshake', function ()
-            {
-                this.write(client_out);
-            });
 
             client_duplex.on('end', cb);
 
@@ -714,6 +704,8 @@ function max_write_size(make_client)
 
                 spark_duplex2.write(server_out);
             });
+
+            client_duplex.write(client_out);
         });
     };
 }
@@ -722,11 +714,17 @@ function read_overflow(get_sender, get_recipient)
 {
     return function (cb)
     {
-        get_recipient().unshift(new Buffer(1));
-        get_recipient().on('error', function ()
+        get_recipient()._msg_stream.once('data', function ()
         {
+            get_recipient().unshift(new Buffer(1));
+        });
+
+        get_recipient().on('error', function (err)
+        {
+            expect(err.message).to.equal('too much data');
             cb();
         });
+
         get_sender().write(new Buffer(100));
     };
 }
@@ -741,7 +739,10 @@ function disable_read_overflow(make_client)
 
             var size = 0;
 
-            client_duplex.unshift(new Buffer(1));
+            client_duplex._msg_stream.once('data', function ()
+            {
+                client_duplex.unshift(new Buffer(1));
+            });
 
             client_duplex.on('end', function ()
             {

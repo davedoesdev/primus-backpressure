@@ -95,11 +95,8 @@ global.connect = function (make_client)
 
             spark_duplex.name = 'server';
 
-            spark_duplex.on('handshake', function ()
-            {
-                spark_done = true;
-                if (client_done) { cb(); }
-            });
+            spark_done = true;
+            if (client_done) { cb(); }
         });
 
         make_client(function (err)

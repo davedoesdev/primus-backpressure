@@ -307,8 +307,6 @@ function PrimusDuplex(msg_stream, options)
             }
         });
 
-        ths.emit('handshake');
-
         ths._send();
     });
 

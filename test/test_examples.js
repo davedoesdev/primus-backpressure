@@ -19,7 +19,6 @@ primus.once('connection', function (spark)
 {
     var spark_duplex = new PrimusDuplex(spark,
     {
-        initiate_handshake: true,
         highWaterMark: 2
     });
 
@@ -66,10 +65,7 @@ var Primus = require('primus'),
 
 primus.once('connection', function (spark)
 {
-    var spark_duplex = new PrimusDuplex(spark,
-    {
-        initiate_handshake: true
-    });
+    var spark_duplex = new PrimusDuplex(spark);
 
     tmp.tmpName(function (err, random_file)
     {

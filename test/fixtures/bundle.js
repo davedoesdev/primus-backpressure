@@ -84,7 +84,6 @@
 	{
 	    var spark_duplex = new PrimusDuplex(spark,
 	    {
-	        initiate_handshake: true,
 	        highWaterMark: 2
 	    });
 
@@ -132,10 +131,7 @@
 
 	primus.once('connection', function (spark)
 	{
-	    var spark_duplex = new PrimusDuplex(spark,
-	    {
-	        initiate_handshake: true
-	    });
+	    var spark_duplex = new PrimusDuplex(spark);
 
 	    tmp.tmpName(function (err, random_file)
 	    {
@@ -235,8 +231,8 @@
 
 	"use strict";
 
-	var util = __webpack_require__(4),
-	    stream = __webpack_require__(5),
+	var util = __webpack_require__(8),
+	    stream = __webpack_require__(9),
 	    crypto = __webpack_require__(2);
 
 	/**
@@ -250,8 +246,6 @@
 	@param {Object} msg_stream The Primus client or spark you wish to exert back-pressure over.
 
 	@param {Object} [options] Configuration options. This is passed onto `stream.Duplex` and can contain the following extra properties:
-
-	  - `{Boolean} [initiate_handshake]` Whether to send a handshake message to the other side of the connection. `PrimusDuplex` needs to exchange a handshake message so both sides know how much data the other can initially buffer. You should pass `initiate_handshake` as `true` on _one side only after connection has been established_. The simplest way to do this is on the server as soon as Primus emits a `connection` event. Defaults to `false`.
 
 	  - `{Function} [encode_data(chunk, encoding, start, end)]` Optional encoding function for data passed to [`writable.write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback). `chunk` and `encoding` are as described in the `writable.write` documentation. The difference is that `encode_data` is synchronous (it must return the encoded data) and it should only encode data between the `start` and `end` positions in `chunk`. Defaults to a function which does `chunk.toString('base64', start, end)`.
 
@@ -280,7 +274,6 @@
 	    this._data = null;
 	    this._encoding = null;
 	    this._index = 0;
-	    this._handshake_sent = false;
 	    this._finished = false;
 
 	    this._encode_data = options.encode_data || function (chunk, encoding, start, end)
@@ -295,7 +288,7 @@
 
 	    var ths = this;
 
-	    msg_stream.once('data', function (data)
+	    function expect_handshake(data)
 	    {
 	        if (data.type === 'end')
 	        {
@@ -311,11 +304,8 @@
 	        ths._remote_free = ths._max_write_size > 0 ?
 	                Math.min(data.free, ths._max_write_size) : data.free;
 
-	        if (!ths._handshake_sent)
-	        {
-	            ths._send_handshake();
-	        }
-
+	        msg_stream.removeListener('data', expect_handshake);
+	    
 	        msg_stream.on('data', function (data)
 	        {
 	            if (data.type === 'data')
@@ -364,10 +354,10 @@
 	            }
 	        });
 
-	        ths.emit('handshake');
-
 	        ths._send();
-	    });
+	    }
+
+	    msg_stream.on('data', expect_handshake);
 
 	    this.on('finish', function ()
 	    {
@@ -402,7 +392,7 @@
 	        ths.emit('error', err);
 	    });
 
-	    if (options.initiate_handshake)
+	    if (!options._delay_handshake)
 	    {
 	        this._send_handshake();
 	    }
@@ -412,8 +402,6 @@
 
 	PrimusDuplex.prototype._send_handshake = function ()
 	{
-	    this._handshake_sent = true;
-
 	    this._msg_stream.write(
 	    {
 	        type: 'handshake',
@@ -528,7 +516,7 @@
 /* 2 */
 /***/ function(module, exports, __webpack_require__) {
 
-	/* WEBPACK VAR INJECTION */(function(Buffer) {var rng = __webpack_require__(6)
+	/* WEBPACK VAR INJECTION */(function(Buffer) {var rng = __webpack_require__(4)
 
 	function error () {
 	  var m = [].slice.call(arguments).join(' ')
@@ -539,9 +527,9 @@
 	    ].join('\n'))
 	}
 
-	exports.createHash = __webpack_require__(7)
+	exports.createHash = __webpack_require__(5)
 
-	exports.createHmac = __webpack_require__(8)
+	exports.createHmac = __webpack_require__(6)
 
 	exports.randomBytes = function(size, callback) {
 	  if (callback && callback.call) {
@@ -563,7 +551,7 @@
 
 	}
 
-	var p = __webpack_require__(9)(exports.createHmac)
+	var p = __webpack_require__(7)(exports.createHmac)
 	exports.pbkdf2 = p.pbkdf2
 	exports.pbkdf2Sync = p.pbkdf2Sync
 
@@ -1752,6 +1740,197 @@
 /* 4 */
 /***/ function(module, exports, __webpack_require__) {
 
+	/* WEBPACK VAR INJECTION */(function(Buffer) {(function() {
+	  module.exports = function(size) {
+	    var bytes = new Buffer(size); //in browserify, this is an extended Uint8Array
+	    /* This will not work in older browsers.
+	     * See https://developer.mozilla.org/en-US/docs/Web/API/window.crypto.getRandomValues
+	     */
+	    crypto.getRandomValues(bytes);
+	    return bytes;
+	  }
+	}())
+	
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3).Buffer))
+
+/***/ },
+/* 5 */
+/***/ function(module, exports, __webpack_require__) {
+
+	/* WEBPACK VAR INJECTION */(function(Buffer) {var createHash = __webpack_require__(16)
+
+	var md5 = toConstructor(__webpack_require__(10))
+	var rmd160 = toConstructor(__webpack_require__(25))
+
+	function toConstructor (fn) {
+	  return function () {
+	    var buffers = []
+	    var m= {
+	      update: function (data, enc) {
+	        if(!Buffer.isBuffer(data)) data = new Buffer(data, enc)
+	        buffers.push(data)
+	        return this
+	      },
+	      digest: function (enc) {
+	        var buf = Buffer.concat(buffers)
+	        var r = fn(buf)
+	        buffers = null
+	        return enc ? r.toString(enc) : r
+	      }
+	    }
+	    return m
+	  }
+	}
+
+	module.exports = function (alg) {
+	  if('md5' === alg) return new md5()
+	  if('rmd160' === alg) return new rmd160()
+	  return createHash(alg)
+	}
+	
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3).Buffer))
+
+/***/ },
+/* 6 */
+/***/ function(module, exports, __webpack_require__) {
+
+	/* WEBPACK VAR INJECTION */(function(Buffer) {var createHash = __webpack_require__(5)
+
+	var blocksize = 64
+	var zeroBuffer = new Buffer(blocksize); zeroBuffer.fill(0)
+
+	module.exports = Hmac
+
+	function Hmac (alg, key) {
+	  if(!(this instanceof Hmac)) return new Hmac(alg, key)
+	  this._opad = opad
+	  this._alg = alg
+
+	  key = this._key = !Buffer.isBuffer(key) ? new Buffer(key) : key
+
+	  if(key.length > blocksize) {
+	    key = createHash(alg).update(key).digest()
+	  } else if(key.length < blocksize) {
+	    key = Buffer.concat([key, zeroBuffer], blocksize)
+	  }
+
+	  var ipad = this._ipad = new Buffer(blocksize)
+	  var opad = this._opad = new Buffer(blocksize)
+
+	  for(var i = 0; i < blocksize; i++) {
+	    ipad[i] = key[i] ^ 0x36
+	    opad[i] = key[i] ^ 0x5C
+	  }
+
+	  this._hash = createHash(alg).update(ipad)
+	}
+
+	Hmac.prototype.update = function (data, enc) {
+	  this._hash.update(data, enc)
+	  return this
+	}
+
+	Hmac.prototype.digest = function (enc) {
+	  var h = this._hash.digest()
+	  return createHash(this._alg).update(this._opad).update(h).digest(enc)
+	}
+
+	
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3).Buffer))
+
+/***/ },
+/* 7 */
+/***/ function(module, exports, __webpack_require__) {
+
+	/* WEBPACK VAR INJECTION */(function(Buffer) {// JavaScript PBKDF2 Implementation
+	// Based on http://git.io/qsv2zw
+	// Licensed under LGPL v3
+	// Copyright (c) 2013 jduncanator
+
+	var blocksize = 64
+	var zeroBuffer = new Buffer(blocksize); zeroBuffer.fill(0)
+
+	module.exports = function (createHmac, exports) {
+	  exports = exports || {}
+
+	  exports.pbkdf2 = function(password, salt, iterations, keylen, cb) {
+	    if('function' !== typeof cb)
+	      throw new Error('No callback provided to pbkdf2');
+	    setTimeout(function () {
+	      cb(null, exports.pbkdf2Sync(password, salt, iterations, keylen))
+	    })
+	  }
+
+	  exports.pbkdf2Sync = function(key, salt, iterations, keylen) {
+	    if('number' !== typeof iterations)
+	      throw new TypeError('Iterations not a number')
+	    if(iterations < 0)
+	      throw new TypeError('Bad iterations')
+	    if('number' !== typeof keylen)
+	      throw new TypeError('Key length not a number')
+	    if(keylen < 0)
+	      throw new TypeError('Bad key length')
+
+	    //stretch key to the correct length that hmac wants it,
+	    //otherwise this will happen every time hmac is called
+	    //twice per iteration.
+	    var key = !Buffer.isBuffer(key) ? new Buffer(key) : key
+
+	    if(key.length > blocksize) {
+	      key = createHash(alg).update(key).digest()
+	    } else if(key.length < blocksize) {
+	      key = Buffer.concat([key, zeroBuffer], blocksize)
+	    }
+
+	    var HMAC;
+	    var cplen, p = 0, i = 1, itmp = new Buffer(4), digtmp;
+	    var out = new Buffer(keylen);
+	    out.fill(0);
+	    while(keylen) {
+	      if(keylen > 20)
+	        cplen = 20;
+	      else
+	        cplen = keylen;
+
+	      /* We are unlikely to ever use more than 256 blocks (5120 bits!)
+	         * but just in case...
+	         */
+	        itmp[0] = (i >> 24) & 0xff;
+	        itmp[1] = (i >> 16) & 0xff;
+	          itmp[2] = (i >> 8) & 0xff;
+	          itmp[3] = i & 0xff;
+
+	          HMAC = createHmac('sha1', key);
+	          HMAC.update(salt)
+	          HMAC.update(itmp);
+	        digtmp = HMAC.digest();
+	        digtmp.copy(out, p, 0, cplen);
+
+	        for(var j = 1; j < iterations; j++) {
+	          HMAC = createHmac('sha1', key);
+	          HMAC.update(digtmp);
+	          digtmp = HMAC.digest();
+	          for(var k = 0; k < cplen; k++) {
+	            out[k] ^= digtmp[k];
+	          }
+	        }
+	      keylen -= cplen;
+	      i++;
+	      p += cplen;
+	    }
+
+	    return out;
+	  }
+
+	  return exports
+	}
+	
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3).Buffer))
+
+/***/ },
+/* 8 */
+/***/ function(module, exports, __webpack_require__) {
+
 	/* WEBPACK VAR INJECTION */(function(global, process) {// Copyright Joyent, Inc. and other Node contributors.
 	//
 	// Permission is hereby granted, free of charge, to any person obtaining a
@@ -2342,7 +2521,7 @@
 	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }()), __webpack_require__(14)))
 
 /***/ },
-/* 5 */
+/* 9 */
 /***/ function(module, exports, __webpack_require__) {
 
 	// Copyright Joyent, Inc. and other Node contributors.
@@ -2372,11 +2551,11 @@
 	var inherits = __webpack_require__(24);
 
 	inherits(Stream, EE);
-	Stream.Readable = __webpack_require__(16);
-	Stream.Writable = __webpack_require__(17);
-	Stream.Duplex = __webpack_require__(18);
-	Stream.Transform = __webpack_require__(19);
-	Stream.PassThrough = __webpack_require__(20);
+	Stream.Readable = __webpack_require__(18);
+	Stream.Writable = __webpack_require__(19);
+	Stream.Duplex = __webpack_require__(20);
+	Stream.Transform = __webpack_require__(21);
+	Stream.PassThrough = __webpack_require__(22);
 
 	// Backwards-compat with node 0.4.x
 	Stream.Stream = Stream;
@@ -2475,197 +2654,6 @@
 
 
 /***/ },
-/* 6 */
-/***/ function(module, exports, __webpack_require__) {
-
-	/* WEBPACK VAR INJECTION */(function(Buffer) {(function() {
-	  module.exports = function(size) {
-	    var bytes = new Buffer(size); //in browserify, this is an extended Uint8Array
-	    /* This will not work in older browsers.
-	     * See https://developer.mozilla.org/en-US/docs/Web/API/window.crypto.getRandomValues
-	     */
-	    crypto.getRandomValues(bytes);
-	    return bytes;
-	  }
-	}())
-	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3).Buffer))
-
-/***/ },
-/* 7 */
-/***/ function(module, exports, __webpack_require__) {
-
-	/* WEBPACK VAR INJECTION */(function(Buffer) {var createHash = __webpack_require__(21)
-
-	var md5 = toConstructor(__webpack_require__(10))
-	var rmd160 = toConstructor(__webpack_require__(25))
-
-	function toConstructor (fn) {
-	  return function () {
-	    var buffers = []
-	    var m= {
-	      update: function (data, enc) {
-	        if(!Buffer.isBuffer(data)) data = new Buffer(data, enc)
-	        buffers.push(data)
-	        return this
-	      },
-	      digest: function (enc) {
-	        var buf = Buffer.concat(buffers)
-	        var r = fn(buf)
-	        buffers = null
-	        return enc ? r.toString(enc) : r
-	      }
-	    }
-	    return m
-	  }
-	}
-
-	module.exports = function (alg) {
-	  if('md5' === alg) return new md5()
-	  if('rmd160' === alg) return new rmd160()
-	  return createHash(alg)
-	}
-	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3).Buffer))
-
-/***/ },
-/* 8 */
-/***/ function(module, exports, __webpack_require__) {
-
-	/* WEBPACK VAR INJECTION */(function(Buffer) {var createHash = __webpack_require__(7)
-
-	var blocksize = 64
-	var zeroBuffer = new Buffer(blocksize); zeroBuffer.fill(0)
-
-	module.exports = Hmac
-
-	function Hmac (alg, key) {
-	  if(!(this instanceof Hmac)) return new Hmac(alg, key)
-	  this._opad = opad
-	  this._alg = alg
-
-	  key = this._key = !Buffer.isBuffer(key) ? new Buffer(key) : key
-
-	  if(key.length > blocksize) {
-	    key = createHash(alg).update(key).digest()
-	  } else if(key.length < blocksize) {
-	    key = Buffer.concat([key, zeroBuffer], blocksize)
-	  }
-
-	  var ipad = this._ipad = new Buffer(blocksize)
-	  var opad = this._opad = new Buffer(blocksize)
-
-	  for(var i = 0; i < blocksize; i++) {
-	    ipad[i] = key[i] ^ 0x36
-	    opad[i] = key[i] ^ 0x5C
-	  }
-
-	  this._hash = createHash(alg).update(ipad)
-	}
-
-	Hmac.prototype.update = function (data, enc) {
-	  this._hash.update(data, enc)
-	  return this
-	}
-
-	Hmac.prototype.digest = function (enc) {
-	  var h = this._hash.digest()
-	  return createHash(this._alg).update(this._opad).update(h).digest(enc)
-	}
-
-	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3).Buffer))
-
-/***/ },
-/* 9 */
-/***/ function(module, exports, __webpack_require__) {
-
-	/* WEBPACK VAR INJECTION */(function(Buffer) {// JavaScript PBKDF2 Implementation
-	// Based on http://git.io/qsv2zw
-	// Licensed under LGPL v3
-	// Copyright (c) 2013 jduncanator
-
-	var blocksize = 64
-	var zeroBuffer = new Buffer(blocksize); zeroBuffer.fill(0)
-
-	module.exports = function (createHmac, exports) {
-	  exports = exports || {}
-
-	  exports.pbkdf2 = function(password, salt, iterations, keylen, cb) {
-	    if('function' !== typeof cb)
-	      throw new Error('No callback provided to pbkdf2');
-	    setTimeout(function () {
-	      cb(null, exports.pbkdf2Sync(password, salt, iterations, keylen))
-	    })
-	  }
-
-	  exports.pbkdf2Sync = function(key, salt, iterations, keylen) {
-	    if('number' !== typeof iterations)
-	      throw new TypeError('Iterations not a number')
-	    if(iterations < 0)
-	      throw new TypeError('Bad iterations')
-	    if('number' !== typeof keylen)
-	      throw new TypeError('Key length not a number')
-	    if(keylen < 0)
-	      throw new TypeError('Bad key length')
-
-	    //stretch key to the correct length that hmac wants it,
-	    //otherwise this will happen every time hmac is called
-	    //twice per iteration.
-	    var key = !Buffer.isBuffer(key) ? new Buffer(key) : key
-
-	    if(key.length > blocksize) {
-	      key = createHash(alg).update(key).digest()
-	    } else if(key.length < blocksize) {
-	      key = Buffer.concat([key, zeroBuffer], blocksize)
-	    }
-
-	    var HMAC;
-	    var cplen, p = 0, i = 1, itmp = new Buffer(4), digtmp;
-	    var out = new Buffer(keylen);
-	    out.fill(0);
-	    while(keylen) {
-	      if(keylen > 20)
-	        cplen = 20;
-	      else
-	        cplen = keylen;
-
-	      /* We are unlikely to ever use more than 256 blocks (5120 bits!)
-	         * but just in case...
-	         */
-	        itmp[0] = (i >> 24) & 0xff;
-	        itmp[1] = (i >> 16) & 0xff;
-	          itmp[2] = (i >> 8) & 0xff;
-	          itmp[3] = i & 0xff;
-
-	          HMAC = createHmac('sha1', key);
-	          HMAC.update(salt)
-	          HMAC.update(itmp);
-	        digtmp = HMAC.digest();
-	        digtmp.copy(out, p, 0, cplen);
-
-	        for(var j = 1; j < iterations; j++) {
-	          HMAC = createHmac('sha1', key);
-	          HMAC.update(digtmp);
-	          digtmp = HMAC.digest();
-	          for(var k = 0; k < cplen; k++) {
-	            out[k] ^= digtmp[k];
-	          }
-	        }
-	      keylen -= cplen;
-	      i++;
-	      p += cplen;
-	    }
-
-	    return out;
-	  }
-
-	  return exports
-	}
-	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3).Buffer))
-
-/***/ },
 /* 10 */
 /***/ function(module, exports, __webpack_require__) {
 
@@ -2678,7 +2666,7 @@
 	 * See http://pajhome.org.uk/crypt/md5 for more info.
 	 */
 
-	var helpers = __webpack_require__(22);
+	var helpers = __webpack_require__(17);
 
 	/*
 	 * Calculate the MD5 of an array of little-endian words, and a bit length
@@ -3435,46 +3423,6 @@
 /* 16 */
 /***/ function(module, exports, __webpack_require__) {
 
-	exports = module.exports = __webpack_require__(29);
-	exports.Readable = exports;
-	exports.Writable = __webpack_require__(30);
-	exports.Duplex = __webpack_require__(31);
-	exports.Transform = __webpack_require__(32);
-	exports.PassThrough = __webpack_require__(33);
-
-
-/***/ },
-/* 17 */
-/***/ function(module, exports, __webpack_require__) {
-
-	module.exports = __webpack_require__(30)
-
-
-/***/ },
-/* 18 */
-/***/ function(module, exports, __webpack_require__) {
-
-	module.exports = __webpack_require__(31)
-
-
-/***/ },
-/* 19 */
-/***/ function(module, exports, __webpack_require__) {
-
-	module.exports = __webpack_require__(32)
-
-
-/***/ },
-/* 20 */
-/***/ function(module, exports, __webpack_require__) {
-
-	module.exports = __webpack_require__(33)
-
-
-/***/ },
-/* 21 */
-/***/ function(module, exports, __webpack_require__) {
-
 	var exports = module.exports = function (alg) {
 	  var Alg = exports[alg]
 	  if(!Alg) throw new Error(alg + ' is not supported (we accept pull requests)')
@@ -3490,7 +3438,7 @@
 
 
 /***/ },
-/* 22 */
+/* 17 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(Buffer) {var intSize = 4;
@@ -3529,6 +3477,46 @@
 	module.exports = { hash: hash };
 	
 	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3).Buffer))
+
+/***/ },
+/* 18 */
+/***/ function(module, exports, __webpack_require__) {
+
+	exports = module.exports = __webpack_require__(29);
+	exports.Readable = exports;
+	exports.Writable = __webpack_require__(30);
+	exports.Duplex = __webpack_require__(31);
+	exports.Transform = __webpack_require__(32);
+	exports.PassThrough = __webpack_require__(33);
+
+
+/***/ },
+/* 19 */
+/***/ function(module, exports, __webpack_require__) {
+
+	module.exports = __webpack_require__(30)
+
+
+/***/ },
+/* 20 */
+/***/ function(module, exports, __webpack_require__) {
+
+	module.exports = __webpack_require__(31)
+
+
+/***/ },
+/* 21 */
+/***/ function(module, exports, __webpack_require__) {
+
+	module.exports = __webpack_require__(32)
+
+
+/***/ },
+/* 22 */
+/***/ function(module, exports, __webpack_require__) {
+
+	module.exports = __webpack_require__(33)
+
 
 /***/ },
 /* 23 */
@@ -3918,7 +3906,7 @@
 	 */
 	module.exports = function (Buffer, Hash) {
 
-	  var inherits = __webpack_require__(4).inherits
+	  var inherits = __webpack_require__(8).inherits
 
 	  inherits(Sha1, Hash)
 
@@ -4082,7 +4070,7 @@
 	 *
 	 */
 
-	var inherits = __webpack_require__(4).inherits
+	var inherits = __webpack_require__(8).inherits
 	var BE       = false
 	var LE       = true
 	var u        = __webpack_require__(35)
@@ -4284,7 +4272,7 @@
 	};
 	/*</replacement>*/
 
-	var Stream = __webpack_require__(5);
+	var Stream = __webpack_require__(9);
 
 	/*<replacement>*/
 	var util = __webpack_require__(39);
@@ -5248,7 +5236,7 @@
 	/*</replacement>*/
 
 
-	var Stream = __webpack_require__(5);
+	var Stream = __webpack_require__(9);
 
 	util.inherits(Writable, Stream);
 

@@ -27,7 +27,6 @@ primus.once('connection', function (spark)
 {
     var spark_duplex = new PrimusDuplex(spark,
     {
-        initiate_handshake: true,
         highWaterMark: 2
     });
 
@@ -75,10 +74,7 @@ var Primus = require('primus'),
 
 primus.once('connection', function (spark)
 {
-    var spark_duplex = new PrimusDuplex(spark,
-    {
-        initiate_handshake: true
-    });
+    var spark_duplex = new PrimusDuplex(spark);
 
     tmp.tmpName(function (err, random_file)
     {
@@ -194,8 +190,6 @@ Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for
 
 @param {Object} [options] Configuration options. This is passed onto `stream.Duplex` and can contain the following extra properties:
 
-  - `{Boolean} [initiate_handshake]` Whether to send a handshake message to the other side of the connection. `PrimusDuplex` needs to exchange a handshake message so both sides know how much data the other can initially buffer. You should pass `initiate_handshake` as `true` on _one side only after connection has been established_. The simplest way to do this is on the server as soon as Primus emits a `connection` event. Defaults to `false`.
-
   - `{Function} [encode_data(chunk, encoding, start, end)]` Optional encoding function for data passed to [`writable.write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback). `chunk` and `encoding` are as described in the `writable.write` documentation. The difference is that `encode_data` is synchronous (it must return the encoded data) and it should only encode data between the `start` and `end` positions in `chunk`. Defaults to a function which does `chunk.toString('base64', start, end)`.
 
   - `{Function} [decode_data(chunk)]` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a functon which does `new Buffer(chunk, 'base64')`.
@@ -223,7 +217,6 @@ function PrimusDuplex(msg_stream, options)
     this._data = null;
     this._encoding = null;
     this._index = 0;
-    this._handshake_sent = false;
     this._finished = false;
 
     this._encode_data = options.encode_data || function (chunk, encoding, start, end)
@@ -238,7 +231,7 @@ function PrimusDuplex(msg_stream, options)
 
     var ths = this;
 
-    msg_stream.once('data', function (data)
+    function expect_handshake(data)
     {
         if (data.type === 'end')
         {
@@ -254,11 +247,8 @@ function PrimusDuplex(msg_stream, options)
         ths._remote_free = ths._max_write_size > 0 ?
                 Math.min(data.free, ths._max_write_size) : data.free;
 
-        if (!ths._handshake_sent)
-        {
-            ths._send_handshake();
-        }
-
+        msg_stream.removeListener('data', expect_handshake);
+    
         msg_stream.on('data', function (data)
         {
             if (data.type === 'data')
@@ -308,7 +298,9 @@ function PrimusDuplex(msg_stream, options)
         });
 
         ths._send();
-    });
+    }
+
+    msg_stream.on('data', expect_handshake);
 
     this.on('finish', function ()
     {
@@ -343,7 +335,7 @@ function PrimusDuplex(msg_stream, options)
         ths.emit('error', err);
     });
 
-    if (options.initiate_handshake)
+    if (!options._delay_handshake)
     {
         this._send_handshake();
     }
@@ -353,8 +345,6 @@ util.inherits(PrimusDuplex, stream.Duplex);
 
 PrimusDuplex.prototype._send_handshake = function ()
 {
-    this._handshake_sent = true;
-
     this._msg_stream.write(
     {
         type: 'handshake',

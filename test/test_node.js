@@ -468,8 +468,6 @@ function default_options(make_default_client, get_client)
                 {
                     this.end();
                 });
-
-                spark_duplex2._send_handshake();
             });
         });
     };
@@ -497,7 +495,10 @@ function emit_error(make_default_client)
 
             primus.once('connection', function (spark2)
             {
-                var spark_duplex2 = new PrimusDuplex(spark2);
+                var spark_duplex2 = new PrimusDuplex(spark2,
+                {
+                    _delay_handshake: true
+                });
 
                 spark_duplex2.on('end', function ()
                 {
@@ -545,7 +546,10 @@ function write_before_handshaken(make_default_client)
 
             primus.once('connection', function (spark2)
             {
-                var spark_duplex2 = new PrimusDuplex(spark2);
+                var spark_duplex2 = new PrimusDuplex(spark2,
+                {
+                    _delay_handshake: true
+                });
 
                 spark_duplex2.once('readable', function ()
                 {
@@ -607,7 +611,6 @@ function disallow_half_open(make_client)
                 var spark_duplex2 = new PrimusDuplex(spark2,
                 {
                     allowHalfOpen: false,
-                    initiate_handshake: true
                 }), ended = false;
 
                 spark_duplex2.on('end', function ()
@@ -682,7 +685,6 @@ function max_write_size(make_client)
                 {
                     max_write_size: 16,
                     highWaterMark: 100,
-                    initiate_handshake: true
                 });
 
                 spark_duplex2.on('readable', function ()
@@ -770,11 +772,7 @@ function disable_read_overflow(make_client)
 
             primus.once('connection', function (spark2)
             {
-                var spark_duplex2 = new PrimusDuplex(spark2,
-                {
-                    initiate_handshake: true
-                });
-
+                var spark_duplex2 = new PrimusDuplex(spark2);
                 spark_duplex2.end(new Buffer(100));
             });
         });

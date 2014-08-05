@@ -89,7 +89,6 @@ global.connect = function (make_client)
         {
             global.spark_duplex = new PrimusDuplex(spark,
             {
-                initiate_handshake: true,
                 highWaterMark: 100
             });
 

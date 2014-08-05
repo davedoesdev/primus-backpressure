@@ -1649,7 +1649,10 @@ describe('PrimusDuplex (browser)', function ()
 
                 client_duplex.on('readable', function ()
                 {
-                    while (this.read());
+                    while (true)
+                    {
+                        if (!this.read()) { break; }
+                    }
                 });
 
                 this.end();

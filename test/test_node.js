@@ -489,7 +489,10 @@ function emit_error(make_default_client)
                 // have to read null to get end event
                 this.on('readable', function ()
                 {
-                    while (this.read());
+                    while (true)
+                    {
+                        if (!this.read()) { break; }
+                    }
                 });
             });
 
@@ -508,7 +511,10 @@ function emit_error(make_default_client)
                 // have to read null to get end event
                 spark_duplex2.on('readable', function ()
                 {
-                    while (this.read());
+                    while (true)
+                    {
+                        if (!this.read()) { break; }
+                    }
                 });
 
                 spark_duplex2._msg_stream.write({ type: 'bar' });
@@ -603,14 +609,17 @@ function disallow_half_open(make_client)
 
             client_duplex.on('readable', function ()
             {
-                while (this.read());
+                while (true)
+                {
+                    if (!this.read()) { break; }
+                }
             });
 
             primus.once('connection', function (spark2)
             {
                 var spark_duplex2 = new PrimusDuplex(spark2,
                 {
-                    allowHalfOpen: false,
+                    allowHalfOpen: false
                 }), ended = false;
 
                 spark_duplex2.on('end', function ()
@@ -620,7 +629,10 @@ function disallow_half_open(make_client)
 
                 spark_duplex2.on('readable', function ()
                 {
-                    while (this.read());
+                    while (true)
+                    {
+                        if (!this.read()) { break; }
+                    }
                 });
 
                 // should close for write after receiving end
@@ -684,7 +696,7 @@ function max_write_size(make_client)
                 var spark_duplex2 = new PrimusDuplex(spark2,
                 {
                     max_write_size: 16,
-                    highWaterMark: 100,
+                    highWaterMark: 100
                 });
 
                 spark_duplex2.on('readable', function ()

@@ -24,7 +24,7 @@
          browser_timeout: false,
          static_url: false,
          async: false */
-/*jslint node: true, nomen: true */
+/*jslint node: true, nomen: true, unparam: true */
 "use strict";
 
 var wd = require('wd');
@@ -1816,5 +1816,128 @@ describe('PrimusDuplex (browser)', function ()
             expect(size).to.equal(101);
             cb();
         }, cb);
+    });
+
+    it.only('should handle string data without re-encoding as base64', function (cb)
+    {
+        var json = JSON.stringify([4, { foo: 34.231123 }, 'hi\u1234\nthere']),
+            client_done = false,
+            server_done = false;
+
+        function encode(chunk, encoding, start, end)
+        {
+            return chunk.substring(start, end);
+        }
+
+        function decode(chunk)
+        {
+            return chunk;
+        }
+
+        primus.once('connection', function (spark2)
+        {
+            var spark_duplex2 = new PrimusDuplex(spark2,
+            {
+                decodeStrings: false,
+                encode_data: encode,
+                decode_data: decode
+            });
+
+            spark_duplex2.setEncoding('utf8');
+
+            spark_duplex2.on('end', function ()
+            {
+                server_done = true;
+                if (client_done) { cb(); }
+            });
+
+            spark_duplex2._msg_stream.on('data', function (data)
+            {
+                if (data.type === 'data')
+                {
+                    expect(data.data).to.equal(json);
+                }
+            });
+
+            spark_duplex2.once('readable', function ()
+            {
+                expect(this.read()).to.equal(json);
+
+                this.on('readable', function ()
+                {
+                    while (true)
+                    {
+                        if (this.read()) { break; }
+                    }
+                });
+            });
+
+            spark_duplex2.end(json);
+        });
+
+        in_browser(function (url, json, cb)
+        {
+            function encode2(chunk, encoding, start, end)
+            {
+                return chunk.substring(start, end);
+            }
+
+            function decode2(chunk)
+            {
+                return chunk;
+            }
+
+            var client_duplex = new PrimusDuplex(new Primus(url),
+                {
+                    decodeStrings: false,
+                    encode_data: encode2,
+                    decode_data: decode2
+                }),
+                name = 'client_' + client_index,
+                read_data,
+                msg_data;
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.setEncoding('utf8');
+
+            client_duplex._msg_stream.on('data', function (data)
+            {
+                if (data.type === 'data')
+                {
+                    msg_data = data.data;
+                }
+            });
+
+            client_duplex.on('end', function ()
+            {
+                this.end(json);
+                cb(null, read_data, msg_data);
+            });
+
+            client_duplex.once('readable', function ()
+            {
+                read_data = this.read();
+
+                this.on('readable', function ()
+                {
+                    while (true)
+                    {
+                        if (this.read()) { break; }
+                    }
+                });
+            });
+        }, client_url, json, function (read_data, msg_data, cb)
+        {
+            expect(read_data).to.equal(json);
+            expect(msg_data).to.equal(json);
+            cb();
+        }, function (err)
+        {
+            if (err) { cb(err); }
+            client_done = true;
+            if (server_done) { cb(); }
+        });
     });
 });

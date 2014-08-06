@@ -19,7 +19,7 @@
          get_server: false,
          connect: false,
          closedown: false */
-/*jslint node: true, nomen: true */
+/*jslint node: true, nomen: true, unparam: true */
 "use strict";
 
 function single_byte(get_sender, get_recipient)
@@ -957,4 +957,91 @@ describe('PrimusDuplex (Node)', function ()
                check_read_overflow: false
            }));
        }));
+
+    it('should handle string data without re-encoding as base64', function (cb)
+    {
+        function encode(chunk, encoding, start, end)
+        {
+            return chunk.substring(start, end);
+        }
+
+        function decode(chunk)
+        {
+            return chunk;
+        }
+
+        var json = JSON.stringify([4, { foo: 34.231123 }, 'hi\u1234\nthere']),
+            client_duplex2 = new PrimusDuplex(new Socket(client_url),
+            {
+                decodeStrings: false,
+                encode_data: encode,
+                decode_data: decode
+            });
+
+        client_duplex2.setEncoding('utf8');
+
+        client_duplex2._msg_stream.on('data', function (data)
+        {
+            if (data.type === 'data')
+            {
+                expect(data.data).to.equal(json);
+            }
+        });
+
+        client_duplex2.on('end', function ()
+        {
+            this.end(json);
+        });
+
+        client_duplex2.once('readable', function ()
+        {
+            var data = this.read();
+            expect(data).to.equal(json);
+
+            this.on('readable', function ()
+            {
+                while (true)
+                {
+                    if (this.read()) { break; }
+                }
+            });
+        });
+
+        primus.once('connection', function (spark2)
+        {
+            var spark_duplex2 = new PrimusDuplex(spark2,
+            {
+                decodeStrings: false,
+                encode_data: encode,
+                decode_data: decode
+            });
+
+            spark_duplex2.setEncoding('utf8');
+
+            spark_duplex2.on('end', cb);
+
+            spark_duplex2._msg_stream.on('data', function (data)
+            {
+                if (data.type === 'data')
+                {
+                    expect(data.data).to.equal(json);
+                }
+            });
+
+            spark_duplex2.once('readable', function ()
+            {
+                expect(this.read()).to.equal(json);
+
+                this.on('readable', function ()
+                {
+                    while (true)
+                    {
+                        if (this.read()) { break; }
+                    }
+                });
+            });
+
+            spark_duplex2.end(json);
+        });
+    });
 });

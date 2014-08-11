@@ -216,6 +216,7 @@ function PrimusDuplex(msg_stream, options)
     this._remote_free = 0;
     this._data = null;
     this._encoding = null;
+    this._cb = null;
     this._index = 0;
     this._finished = false;
 

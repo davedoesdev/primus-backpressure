@@ -168,7 +168,7 @@ grunt lint
 
 [`PrimusDuplex`](#primusduplexmsg_stream-options) inherits from [`stream.Duplex`](http://nodejs.org/api/stream.html#stream_class_stream_duplex_1) so you can call any method from [`stream.Readable`](http://nodejs.org/api/stream.html#stream_class_stream_readable) and [`stream.Writable`](http://nodejs.org/api/stream.html#stream_class_stream_writable).
 
-Extra constructor options, an additional parameter to [`readable.read`](http://nodejs.org/api/stream.html#stream_readable_read_size) and an extra event are described below.
+Extra constructor options and an additional parameter to [`readable.read`](http://nodejs.org/api/stream.html#stream_readable_read_size) are described below.
 */
 /*jslint node: true, nomen: true, unparam: true */
 

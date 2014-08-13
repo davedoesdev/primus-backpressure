@@ -349,7 +349,7 @@ PrimusDuplex.prototype._send_handshake = function ()
     this._msg_stream.write(
     {
         type: 'handshake',
-        free: this._readableState.highWaterMark - this._readableState.length
+        free: Math.max(this._readableState.highWaterMark - this._readableState.length, 0)
     });
 };
 
@@ -369,7 +369,7 @@ PrimusDuplex.prototype._send_status = function ()
         return;
     }
 
-    var free = this._readableState.highWaterMark - this._readableState.length,
+    var free = Math.max(this._readableState.highWaterMark - this._readableState.length, 0),
         msg;
 
     if (this._prev_status &&

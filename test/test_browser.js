@@ -1818,7 +1818,7 @@ describe('PrimusDuplex (browser)', function ()
         }, cb);
     });
 
-    it.only('should handle string data without re-encoding as base64', function (cb)
+    it('should handle string data without re-encoding as base64', function (cb)
     {
         var json = JSON.stringify([4, { foo: 34.231123 }, 'hi\u1234\nthere']),
             client_done = false,

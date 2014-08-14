@@ -1945,9 +1945,8 @@ describe('PrimusDuplex (browser)', function ()
     {
         in_browser(function (name, cb)
         {
-            var client_duplex = client_duplexes[name];
-
-            var orig_write = client_duplex._msg_stream.write;
+            var client_duplex = client_duplexes[name],
+                orig_write = client_duplex._msg_stream.write;
 
             client_duplex._msg_stream.write = function (data)
             {

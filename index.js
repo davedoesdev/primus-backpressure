@@ -445,6 +445,11 @@ PrimusDuplex.prototype._send = function ()
 
 PrimusDuplex.prototype._write = function (data, encoding, cb)
 {
+    if (data.length === 0)
+    {
+        return cb();
+    }
+
     this._data = data;
     this._encoding = encoding;
     this._cb = cb;

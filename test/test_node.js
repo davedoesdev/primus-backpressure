@@ -1044,4 +1044,23 @@ describe('PrimusDuplex (Node)', function ()
             spark_duplex2.end(json);
         });
     });
+
+    it('should not write zero length data', function (cb)
+    {
+        var orig_write = get_client()._msg_stream.write;
+
+        get_client()._msg_stream.write = function (data)
+        {
+            if (data.type === 'data')
+            {
+                expect(data.data.length).to.be.above(0);
+                return cb();
+            }
+
+            orig_write.call(this, data);
+        };
+
+        get_client().write(new Buffer(0));
+        get_client().write(new Buffer(1));
+    });
 });

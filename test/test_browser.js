@@ -1940,4 +1940,31 @@ describe('PrimusDuplex (browser)', function ()
             if (server_done) { cb(); }
         });
     });
+
+    it('should not write zero length data', function (cb)
+    {
+        in_browser(function (name, cb)
+        {
+            var client_duplex = client_duplexes[name];
+
+            var orig_write = client_duplex._msg_stream.write;
+
+            client_duplex._msg_stream.write = function (data)
+            {
+                if (data.type === 'data')
+                {
+                    return cb(null, data.data.length);
+                }
+
+                orig_write.call(this, data);
+            };
+
+            client_duplex.write(new NodeBuffer(0));
+            client_duplex.write(new NodeBuffer(1));
+        }, get_client_duplex_name(), function (len, cb)
+        {
+            expect(len).to.be.above(0);
+            cb();
+        }, cb);
+    });
 });

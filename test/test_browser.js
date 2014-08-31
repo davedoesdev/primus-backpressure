@@ -2198,7 +2198,7 @@ describe('PrimusDuplex (browser)', function ()
                 this.end();
             });
 
-            spark_duplex2.on('readable', function ()
+            spark_duplex2.once('readable', function ()
             {
                 expect(this.read().toString()).to.equal('hello');
 

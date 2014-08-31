@@ -24,7 +24,7 @@
          browser_timeout: false,
          static_url: false,
          async: false */
-/*jslint node: true, nomen: true, unparam: true */
+/*jslint node: true, nomen: true, unparam: true, bitwise: true */
 "use strict";
 
 var wd = require('wd');
@@ -755,7 +755,7 @@ describe('PrimusDuplex (browser)', function ()
                 cb(null, client_duplex.finished, client_duplex.drains);
             }, get_client_name(), function (drains, cb)
             {
-                expect(drains).to.equal(31);
+                expect(drains).to.equal(33);
                 write_done = true;
                 console.log("client wbp write done");
                 if (read_done) { cb(); }
@@ -815,7 +815,7 @@ describe('PrimusDuplex (browser)', function ()
 
                 get_server().on('finish', function ()
                 {
-                    expect(drains).to.equal(31);
+                    expect(drains).to.equal(33);
                     write_done = true;
                     console.log("server wbp write done");
                     if (read_done) { cb(); }
@@ -1826,12 +1826,13 @@ describe('PrimusDuplex (browser)', function ()
 
         function encode(chunk, encoding, start, end)
         {
-            return chunk.substring(start, end);
+            return encoding ? chunk.substring(start, end) :
+                              chunk.toString('base64', start, end);
         }
 
-        function decode(chunk)
+        function decode(chunk, internal)
         {
-            return chunk;
+            return internal ? new Buffer(chunk, 'base64') : chunk;
         }
 
         primus.once('connection', function (spark2)
@@ -1867,7 +1868,7 @@ describe('PrimusDuplex (browser)', function ()
                 {
                     while (true)
                     {
-                        if (this.read()) { break; }
+                        if (!this.read()) { break; }
                     }
                 });
             });
@@ -1879,12 +1880,13 @@ describe('PrimusDuplex (browser)', function ()
         {
             function encode2(chunk, encoding, start, end)
             {
-                return chunk.substring(start, end);
+                return encoding ? chunk.substring(start, end) :
+                                  chunk.toString('base64', start, end);
             }
 
-            function decode2(chunk)
+            function decode2(chunk, internal)
             {
-                return chunk;
+                return internal ? new NodeBuffer(chunk, 'base64') : chunk;
             }
 
             var client_duplex = new PrimusDuplex(new Primus(url),
@@ -1924,7 +1926,7 @@ describe('PrimusDuplex (browser)', function ()
                 {
                     while (true)
                     {
-                        if (this.read()) { break; }
+                        if (!this.read()) { break; }
                     }
                 });
             });
@@ -1963,6 +1965,413 @@ describe('PrimusDuplex (browser)', function ()
         }, get_client_duplex_name(), function (len, cb)
         {
             expect(len).to.be.above(0);
+            cb();
+        }, cb);
+    });
+
+    it('should emit an error when encoded data is not a string', function (cb)
+    {
+        function encode(chunk, encoding, start, end, internal)
+        {
+            return internal ? chunk.toString('base64', start, end) : 42;
+        }
+
+        primus.once('connection', function (spark2)
+        {
+            var spark_duplex2 = new PrimusDuplex(spark2,
+            {
+                encode_data: encode
+            });
+
+            spark_duplex2.end('hello');
+        });
+
+        in_browser(function (url, cb)
+        {
+            var client_duplex = new PrimusDuplex(new Primus(url)),
+                name = 'client_' + client_index;
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.on('error', function (err)
+            {
+                this.end();
+                cb(null, err.message);
+            });
+        }, client_url, function (msg, cb)
+        {
+            expect(msg).to.equal('encoded data is not a string: 42');
+            cb();
+        }, cb);
+    });
+
+    it('should emit an error when null data is sent before handshake', function (cb)
+    {
+        primus.once('connection', function (spark2)
+        {
+            var spark_duplex2 = new PrimusDuplex(spark2,
+            {
+                _delay_handshake: true
+            });
+
+            spark_duplex2._msg_stream.write(null);
+            spark_duplex2.end();
+        });
+
+        in_browser(function (url, cb)
+        {
+            var client_duplex = new PrimusDuplex(new Primus(url)),
+                name = 'client_' + client_index;
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.on('error', function (err)
+            {
+                this.end();
+                cb(null, err.message);
+            });
+        }, client_url, function (msg, cb)
+        {
+            expect(msg).to.equal('invalid data: null');
+            cb();
+        }, cb);
+    });
+
+    it('should emit an error when null data is sent after handshake', function (cb)
+    {
+        in_browser(function (name, cb)
+        {
+            var client_duplex = client_duplexes[name];
+
+            client_duplex.on('error', function (err)
+            {
+                this.end();
+                this.message = err.message;
+            });
+
+            cb();
+        }, get_client_duplex_name(), null, function (err)
+        {
+            if (err) { cb(err); }
+            get_server()._msg_stream.write(null);
+            get_server().end();
+        });
+
+        wait_browser(function (name, cb)
+        {
+            var client_duplex = client_duplexes[name];
+            cb(null, !!client_duplex.message, client_duplex.message);
+        }, get_client_duplex_name(), function (msg, cb)
+        {
+            expect(msg).to.equal('invalid data: null');
+            cb();
+        }, cb);
+    });
+
+    it('should support not decoding data', function (cb)
+    {
+        primus.once('connection', function (spark2)
+        {
+            var spark_duplex2 = new PrimusDuplex(spark2);
+            spark_duplex2.end('hello');
+        });
+
+        in_browser(function (url, cb)
+        {
+            var client_duplex,
+                name = 'client_' + client_index,
+                received,
+                read_data;
+
+            function decode(chunk, internal)
+            {
+                received = chunk;
+                return internal ? new NodeBuffer(chunk, 'base64') : null;
+            }
+
+            client_duplex = new PrimusDuplex(new Primus(url),
+            {
+                decode_data: decode
+            });
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.on('end', function ()
+            {
+                this.end();
+                cb(null, received, read_data);
+            });
+
+            client_duplex.on('readable', function ()
+            {
+                read_data = this.read();
+            });
+        }, client_url, function (received, read_data, cb)
+        {
+            expect(received).to.equal(new Buffer('hello').toString('base64'));
+            expect(read_data).to.equal(null);
+            cb();
+        }, cb);
+    });
+
+    it('should support not decoding status data', function (cb)
+    {
+        var spark_duplex2;
+
+        primus.once('connection', function (spark2)
+        {
+            spark_duplex2 = new PrimusDuplex(spark2);
+
+            spark_duplex2.on('end', function ()
+            {
+                this.end();
+            });
+
+            spark_duplex2.once('readable', function ()
+            {
+                expect(this.read().toString()).to.equal('hello');
+
+                spark_duplex2.on('readable', function ()
+                {
+                    this.read();
+                });
+            });
+        });
+
+        in_browser(function (url, cb)
+        {
+            var client_duplex,
+                name = 'client_' + client_index,
+                received,
+                intrnl;
+
+            function decode(chunk, internal)
+            {
+                received = chunk;
+                intrnl = internal;
+                return null;
+            }
+
+            client_duplex = new PrimusDuplex(new Primus(url),
+            {
+                decode_data: decode
+            });
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.on('end', function ()
+            {
+                cb(null, received, intrnl, this._remote_free);
+            });
+
+            client_duplex.on('readable', function ()
+            {
+                this.read();
+            });
+
+            client_duplex._msg_stream.on('open', function ()
+            {
+                client_duplex.end('hello');
+            });
+        }, client_url, function (received, internal, remote_free, cb)
+        {
+            var buf = new Buffer(received, 'base64');
+            expect(buf.readUInt32BE(0)).to.equal(5);
+            expect(internal).to.equal(true);
+            expect(remote_free).to.equal(spark_duplex2._readableState.highWaterMark - 5);
+            cb();
+        }, cb);
+    });
+
+    it('should emit an error if sequence is wrong length', function (cb)
+    {
+        primus.once('connection', function (spark2)
+        {
+            var spark_duplex2 = new PrimusDuplex(spark2);
+
+            spark_duplex2.on('end', function ()
+            {
+                this.end();
+            });
+
+            spark_duplex2.on('readable', function ()
+            {
+                expect(this.read().toString()).to.equal('hello');
+
+                spark_duplex2.on('readable', function ()
+                {
+                    this.read();
+                });
+            });
+        });
+
+        in_browser(function (url, cb)
+        {
+            var client_duplex,
+                name = 'client_' + client_index,
+                received,
+                intrnl;
+
+            function decode(chunk, internal)
+            {
+                received = chunk;
+                intrnl = internal;
+                var buf = new NodeBuffer(chunk, 'base64');
+                return NodeBuffer.concat([buf, new NodeBuffer(1)]);
+            }
+
+            client_duplex = new PrimusDuplex(new Primus(url),
+            {
+                decode_data: decode
+            });
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.on('error', function (err)
+            {
+                cb(null, received, intrnl, err.message);
+            });
+
+            client_duplex._msg_stream.on('open', function ()
+            {
+                client_duplex.end('hello');
+            });
+        }, client_url, function (received, internal, msg, cb)
+        {
+            var buf = new Buffer(received, 'base64');
+            expect(buf.length).to.equal(36);
+            expect(buf.readUInt32BE(0)).to.equal(5);
+            expect(internal).to.equal(true);
+            expect(msg).to.equal('invalid sequence length: 37');
+            cb();
+        }, cb);
+    });
+
+    it('should emit an error if sequence is invalid', function (cb)
+    {
+        primus.once('connection', function (spark2)
+        {
+            var spark_duplex2 = new PrimusDuplex(spark2);
+
+            spark_duplex2.on('end', function ()
+            {
+                this.end();
+            });
+
+            spark_duplex2.once('readable', function ()
+            {
+                expect(this.read().toString()).to.equal('hello');
+
+                spark_duplex2.on('readable', function ()
+                {
+                    this.read();
+                });
+            });
+        });
+
+        in_browser(function (url, cb)
+        {
+            var client_duplex,
+                name = 'client_' + client_index,
+                received,
+                intrnl;
+
+            function decode(chunk, internal)
+            {
+                received = chunk;
+                intrnl = internal;
+                var buf = new NodeBuffer(chunk, 'base64');
+                buf[20] ^= 1;
+                return buf;
+            }
+
+            client_duplex = new PrimusDuplex(new Primus(url),
+            {
+                decode_data: decode
+            });
+
+            client_index += 1;
+            client_duplexes[name] = client_duplex;
+
+            client_duplex.on('error', function (err)
+            {
+                cb(null, received, intrnl, err.message);
+            });
+
+            client_duplex._msg_stream.on('open', function ()
+            {
+                client_duplex.end('hello');
+            });
+        }, client_url, function (received, internal, msg, cb)
+        {
+            var buf = new Buffer(received, 'base64');
+            expect(buf.length).to.equal(36);
+            expect(buf.readUInt32BE(0)).to.equal(5);
+            expect(internal).to.equal(true);
+            expect(msg).to.equal('invalid sequence signature');
+            cb();
+        }, cb);
+    });
+
+    it('should wrap sequence numbers', function (cb)
+    {
+        get_server().once('readable', function ()
+        {
+            expect(this.read().toString()).to.equal('hel');
+
+            this.once('readable', function ()
+            {
+                expect(this.read().toString()).to.equal('lo there');
+                expect(this.read()).to.equal(null);
+                this.end();
+            });
+        });
+
+        in_browser(function (name, cb)
+        {
+            var client_duplex = client_duplexes[name],
+                lengths = [],
+                seqs = [],
+                _seqs = [],
+                _remote_frees = [];
+
+            client_duplex._decode_data = function (chunk, internal)
+            {
+                var buf = new NodeBuffer(chunk, 'base64');
+                lengths.push(buf.length);
+                seqs.push(buf.readUInt32BE(0));
+                _seqs.push(this._seq);
+                _remote_frees.push(this._remote_free);
+                return buf;
+            };
+
+            client_duplex._seq = Math.pow(2, 32) - 4;
+
+            client_duplex.on('end', function ()
+            {
+                _remote_frees.push(this._remote_free);
+                _seqs.push(this._seq);
+                cb(null, lengths, seqs, _seqs, _remote_frees);
+            });
+
+            client_duplex.on('readable', function ()
+            {
+                this.read();
+            });
+
+            client_duplex.write('hel');
+            client_duplex.end('lo there');
+        }, get_client_duplex_name(), function (lengths, seqs, _seqs, _remote_frees, cb)
+        {
+            expect(lengths).to.eql([36, 36]);
+            expect(seqs).to.eql([Math.pow(2, 32) - 4 + 3, 7]);
+            expect(_seqs).to.eql([7, 7, 7]);
+            expect(_remote_frees).to.eql([89, 92, 100]);
             cb();
         }, cb);
     });

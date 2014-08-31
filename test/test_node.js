@@ -19,7 +19,7 @@
          get_server: false,
          connect: false,
          closedown: false */
-/*jslint node: true, nomen: true, unparam: true */
+/*jslint node: true, nomen: true, unparam: true, bitwise: true */
 "use strict";
 
 function single_byte(get_sender, get_recipient)
@@ -206,7 +206,7 @@ function write_backpressure(get_sender, get_recipient)
 
         get_sender().on('finish', function ()
         {
-            expect(drains).to.equal(31);
+            expect(drains).to.equal(34);
             write_done = true;
             if (read_done) { cb(); }
         });
@@ -572,7 +572,6 @@ function write_before_handshaken(make_default_client)
                     {
                         this.read();
                     });
-
                 });
 
                 spark_duplex2.end('x');
@@ -962,12 +961,13 @@ describe('PrimusDuplex (Node)', function ()
     {
         function encode(chunk, encoding, start, end)
         {
-            return chunk.substring(start, end);
+            return encoding ? chunk.substring(start, end) :
+                              chunk.toString('base64', start, end);
         }
 
-        function decode(chunk)
+        function decode(chunk, internal)
         {
-            return chunk;
+            return internal ? new Buffer(chunk, 'base64') : chunk;
         }
 
         var json = JSON.stringify([4, { foo: 34.231123 }, 'hi\u1234\nthere']),
@@ -995,14 +995,13 @@ describe('PrimusDuplex (Node)', function ()
 
         client_duplex2.once('readable', function ()
         {
-            var data = this.read();
-            expect(data).to.equal(json);
+            expect(this.read()).to.equal(json);
 
             this.on('readable', function ()
             {
                 while (true)
                 {
-                    if (this.read()) { break; }
+                    if (!this.read()) { break; }
                 }
             });
         });
@@ -1036,7 +1035,7 @@ describe('PrimusDuplex (Node)', function ()
                 {
                     while (true)
                     {
-                        if (this.read()) { break; }
+                        if (!this.read()) { break; }
                     }
                 });
             });
@@ -1062,5 +1061,298 @@ describe('PrimusDuplex (Node)', function ()
 
         get_client().write(new Buffer(0));
         get_client().write(new Buffer(1));
+    });
+
+    it('should emit an error when encoded data is not a string', function (cb)
+    {
+        function encode(chunk, encoding, start, end, internal)
+        {
+            return internal ? chunk.toString('base64', start, end) : 42;
+        }
+
+        var client_duplex2 = new PrimusDuplex(new Socket(client_url),
+        {
+            encode_data: encode
+        });
+
+        client_duplex2.write('hello');
+
+        primus.once('connection', function (spark2)
+        {
+            var spark_duplex2 = new PrimusDuplex(spark2);
+
+            spark_duplex2.on('error', function (err)
+            {
+                expect(err.message).to.equal('encoded data is not a string: 42');
+                client_duplex2.end();
+                spark_duplex2.end();
+                cb();
+            });
+        });
+    });
+
+    it('should emit an error when null data is sent before handshake', function (cb)
+    {
+        var client_duplex2 = new PrimusDuplex(new Socket(client_url),
+        {
+            _delay_handshake: true
+        });
+
+        primus.once('connection', function (spark2)
+        {
+            var spark_duplex2 = new PrimusDuplex(spark2);
+
+            spark_duplex2.on('error', function (err)
+            {
+                expect(err.message).to.equal('invalid data: null');
+                client_duplex2.end();
+                spark_duplex2.end();
+                cb();
+            });
+
+            client_duplex2._msg_stream.write(null);
+        });
+    });
+
+    it('should emit an error when null data is sent after handshake', function (cb)
+    {
+        get_server().on('error', function (err)
+        {
+            expect(err.message).to.equal('invalid data: null');
+            cb();
+        });
+
+        get_client()._msg_stream.write(null);
+    });
+
+    it('should support not decoding data', function (cb)
+    {
+        var received, client_duplex2;
+
+        function decode(chunk, internal)
+        {
+            received = chunk;
+            return internal ? new Buffer(chunk, 'base64') : null;
+        }
+
+        client_duplex2 = new PrimusDuplex(new Socket(client_url),
+        {
+            decode_data: decode
+        });
+
+        client_duplex2.on('end', function ()
+        {
+            expect(received).to.equal(new Buffer('hello').toString('base64'));
+            this.end();
+            cb();
+        });
+
+        client_duplex2.on('readable', function ()
+        {
+            expect(this.read()).to.equal(null);
+        });
+
+        primus.once('connection', function (spark2)
+        {
+            var spark_duplex2 = new PrimusDuplex(spark2);
+            spark_duplex2.end('hello');
+        });
+    });
+
+    it('should support not decoding status data', function (cb)
+    {
+        var received, client_duplex2, spark_duplex2;
+
+        function decode(chunk, internal)
+        {
+            expect(internal).to.equal(true);
+            received = chunk;
+            return null;
+        }
+
+        client_duplex2 = new PrimusDuplex(new Socket(client_url),
+        {
+            decode_data: decode
+        });
+
+        client_duplex2.on('end', function ()
+        {
+            expect(this._remote_free).to.equal(spark_duplex2._readableState.highWaterMark - 5);
+            var buf = new Buffer(received, 'base64');
+            expect(buf.readUInt32BE(0)).to.equal(5);
+            cb();
+        });
+
+        client_duplex2.on('readable', function ()
+        {
+            this.read();
+        });
+
+        client_duplex2.end('hello');
+
+        primus.once('connection', function (spark2)
+        {
+            spark_duplex2 = new PrimusDuplex(spark2);
+
+            spark_duplex2.on('end', function ()
+            {
+                this.end();
+            });
+
+            spark_duplex2.once('readable', function ()
+            {
+                expect(this.read().toString()).to.equal('hello');
+
+                spark_duplex2.on('readable', function ()
+                {
+                    this.read();
+                });
+            });
+        });
+    });
+
+    it('should emit an error if sequence is wrong length', function (cb)
+    {
+        var client_duplex2, spark_duplex2;
+
+        function decode(chunk, internal)
+        {
+            expect(internal).to.equal(true);
+            var buf = new Buffer(chunk, 'base64');
+            expect(buf.length).to.equal(36);
+            expect(buf.readUInt32BE(0)).to.equal(5);
+            return Buffer.concat([buf, new Buffer(1)]);
+        }
+
+        client_duplex2 = new PrimusDuplex(new Socket(client_url),
+        {
+            decode_data: decode
+        });
+
+        client_duplex2.on('error', function (err)
+        {
+            expect(err.message).to.equal('invalid sequence length: 37');
+            cb();
+        });
+
+        client_duplex2.end('hello');
+
+        primus.once('connection', function (spark2)
+        {
+            spark_duplex2 = new PrimusDuplex(spark2);
+
+            spark_duplex2.on('end', function ()
+            {
+                this.end();
+            });
+
+            spark_duplex2.once('readable', function ()
+            {
+                expect(this.read().toString()).to.equal('hello');
+
+                spark_duplex2.on('readable', function ()
+                {
+                    this.read();
+                });
+            });
+        });
+    });
+
+    it('should emit an error if sequence is invalid', function (cb)
+    {
+        var client_duplex2, spark_duplex2;
+
+        function decode(chunk, internal)
+        {
+            expect(internal).to.equal(true);
+            var buf = new Buffer(chunk, 'base64');
+            expect(buf.length).to.equal(36);
+            expect(buf.readUInt32BE(0)).to.equal(5);
+            buf[20] ^= 1;
+            return buf;
+        }
+
+        client_duplex2 = new PrimusDuplex(new Socket(client_url),
+        {
+            decode_data: decode
+        });
+
+        client_duplex2.on('error', function (err)
+        {
+            expect(err.message).to.equal('invalid sequence signature');
+            cb();
+        });
+
+        client_duplex2.end('hello');
+
+        primus.once('connection', function (spark2)
+        {
+            spark_duplex2 = new PrimusDuplex(spark2);
+
+            spark_duplex2.on('end', function ()
+            {
+                this.end();
+            });
+
+            spark_duplex2.once('readable', function ()
+            {
+                expect(this.read().toString()).to.equal('hello');
+
+                spark_duplex2.on('readable', function ()
+                {
+                    this.read();
+                });
+            });
+        });
+    });
+
+    it('should wrap sequence numbers', function (cb)
+    {
+        var expected_seq = Math.pow(2, 32) - 4 + 3,
+            expected_remote_free = 89;
+
+        get_client()._decode_data = function (chunk, internal)
+        {
+            var buf = new Buffer(chunk, 'base64');
+            expect(buf.length).to.equal(36);
+            expect(buf.readUInt32BE(0)).to.equal(expected_seq);
+            expected_seq = 7;
+
+            expect(this._seq).to.equal(7);
+
+            expect(this._remote_free).to.equal(expected_remote_free);
+            expected_remote_free = 92;
+
+            return buf;
+        };
+
+        get_client()._seq = Math.pow(2, 32) - 4;
+
+        get_client().on('end', function ()
+        {
+            expect(this._remote_free).to.equal(100);
+            expect(this._seq).to.equal(7);
+            cb();
+        });
+
+        get_client().on('readable', function ()
+        {
+            this.read();
+        });
+
+        get_client().write('hel');
+        get_client().end('lo there');
+
+        get_server().once('readable', function ()
+        {
+            expect(this.read().toString()).to.equal('hel');
+
+            this.once('readable', function ()
+            {
+                expect(this.read().toString()).to.equal('lo there');
+                expect(this.read()).to.equal(null);
+                this.end();
+            });
+        });
     });
 });

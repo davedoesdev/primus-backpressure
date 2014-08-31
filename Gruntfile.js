@@ -5,7 +5,7 @@
 
 var path = require('path');
 
-global.timeout = 60 * 1000;
+global.timeout = 2 * 60 * 1000;
 global.browser_timeout = 5 * 60 * 1000;
 
 module.exports = function (grunt)
@@ -80,14 +80,6 @@ module.exports = function (grunt)
                 },
                 stats: {
                     modules: true
-                },
-                node: {
-                    crypto: false
-                },
-                resolve: {
-                    alias: {
-                        crypto: require.resolve('crypto-browserify')
-                    }
                 }
             }
         }

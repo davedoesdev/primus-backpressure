@@ -176,7 +176,8 @@ Extra constructor options and an additional parameter to [`readable.read`](http:
 
 var util = require('util'),
     stream = require('stream'),
-    crypto = require('crypto');
+    crypto = require('crypto'),
+    max_seq = Math.pow(2, 32);
 
 /**
 Creates a new `PrimusDuplex` object which exerts back-pressure over a [Primus](https://github.com/primus/primus) connection.
@@ -190,17 +191,13 @@ Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for
 
 @param {Object} [options] Configuration options. This is passed onto `stream.Duplex` and can contain the following extra properties:
 
-  - `{Function} [encode_data(chunk, encoding, start, end)]` Optional encoding function for data passed to [`writable.write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback). `chunk` and `encoding` are as described in the `writable.write` documentation. The difference is that `encode_data` is synchronous (it must return the encoded data) and it should only encode data between the `start` and `end` positions in `chunk`. Defaults to a function which does `chunk.toString('base64', start, end)`.
+  - `{Function} [encode_data(chunk, encoding, start, end, internal)]` Optional encoding function for data passed to [`writable.write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback). `chunk` and `encoding` are as described in the `writable.write` documentation. The difference is that `encode_data` is synchronous (it must return the encoded data) and it should only encode data between the `start` and `end` positions in `chunk`. Defaults to a function which does `chunk.toString('base64', start, end)`. Note that `PrimusDuplex` may also pass some internal data through this function (always with `chunk` as a `Buffer`, `encoding=null` and `internal=true`).
 
-  - `{Function} [decode_data(chunk)]` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a functon which does `new Buffer(chunk, 'base64')`.
+  - `{Function} [decode_data(chunk, internal)]` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a function which does `new Buffer(chunk, 'base64')`. If the data can't be decoded, return `null` (and optionally call `this.emit` to emit an error). Note that `PrimusDuplex` may also pass some internal data through this function (always with `internal=true`) &mdash; in which case you must return a `Buffer`.
 
   - `{Integer} [max_write_size]` Maximum number of bytes to write onto the Primus connection at once, regardless of how many bytes the peer is free to receive. Defaults to 0 (no limit).
 
   - `{Boolean} [check_read_overflow]` Whether to check if more data than expected is being received. If `true` and the high-water mark for reading is exceeded then the `PrimusDuplex` object emits an `error` event. This should not normally occur unless you add data yourself using [`readable.unshift`](http://nodejs.org/api/stream.html#stream_readable_unshift_chunk) &mdash; in which case you should set `check_read_overflow` to `false`. Defaults to `true`.
-
-  - `{Integer} [seq_size]` Number of random bytes to use for sequence numbers. `PrimusDuplex` sends sequence numbers with messages so it knows it has up-to-date information from its peer. The sequence numbers are random so the peer has to read the data to obtain them. It can't guess a sequence number and lie about the amount of space it has free in its buffer in order to get the sender to buffer more data.
-  
-    Note that if you're worried about a malicious peer using a TCP implementation which doesn't ACK data in order to get the sender to buffer more data, you should consider modifying the TCP parameters in your operating system related to timeout, retransmission limits and keep-alive. On Linux, see the `tcp(7)` man page.
 */
 function PrimusDuplex(msg_stream, options)
 {
@@ -208,11 +205,11 @@ function PrimusDuplex(msg_stream, options)
 
     options = options || {};
 
-    this._seq_size = options.seq_size || 20;
     this._max_write_size = options.max_write_size || 0;
     this._check_read_overflow = options.check_read_overflow !== false;
     this._msg_stream = msg_stream;
-    this._seq = crypto.randomBytes(this._seq_size).toString('base64');
+    this._seq = 0;
+    this._secret = crypto.randomBytes(64);
     this._remote_free = 0;
     this._data = null;
     this._encoding = null;
@@ -227,6 +224,12 @@ function PrimusDuplex(msg_stream, options)
 
     this._decode_data = options.decode_data || function (chunk)
     {
+        if (typeof chunk !== 'string')
+        {
+            this.emit('error', new Error('encoded data is not a string: ' + chunk));
+            return null;
+        }
+
         return new Buffer(chunk, 'base64');
     };
 
@@ -234,6 +237,11 @@ function PrimusDuplex(msg_stream, options)
 
     function expect_handshake(data)
     {
+        if (!data)
+        {
+            return ths.emit('error', new Error('invalid data: ' + data));
+        }
+
         if (data.type === 'end')
         {
             ths.push(null);
@@ -252,6 +260,13 @@ function PrimusDuplex(msg_stream, options)
     
         msg_stream.on('data', function (data)
         {
+            var ddata, buf, free, seq, hmac, digest, i;
+
+            if (!data)
+            {
+                return ths.emit('error', new Error('invalid data: ' + data));
+            }
+
             if (data.type === 'data')
             {
                 ths._remote_seq = data.seq;
@@ -260,7 +275,8 @@ function PrimusDuplex(msg_stream, options)
                 /* istanbul ignore else */
                 if (!ths._readableState.ended)
                 {
-                    var ddata = ths._decode_data(data.data);
+                    ddata = ths._decode_data(data.data);
+                    if (!ddata) { return; }
 
                     if (ths._check_read_overflow &&
                         ((ths._readableState.length + ddata.length) >
@@ -276,12 +292,39 @@ function PrimusDuplex(msg_stream, options)
             }
             else if (data.type === 'status')
             {
-                if (data.seq === ths._seq)
+                buf = ths._decode_data(data.seq, true);
+                if (!buf) { return; }
+
+                if (buf.length !== 36)
                 {
-                    ths._remote_free = ths._max_write_size > 0 ?
-                            Math.min(data.free, ths._max_write_size) : data.free;
-                    ths._send();
+                    return ths.emit('error', new Error('invalid sequence length: ' + buf.length));
                 }
+
+                hmac = crypto.createHmac('sha256', ths._secret);
+                hmac.update(buf.slice(0, 4));
+                digest = hmac.digest();
+
+                for (i = 0; i < 32; i += 1)
+                {
+                    if (digest[i] !== buf[4 + i])
+                    {
+                        return ths.emit('error', new Error('invalid sequence signature'));
+                    }
+                }
+
+                free = ths._max_write_size > 0 ?
+                        Math.min(data.free, ths._max_write_size) : data.free;
+
+                seq = buf.readUInt32BE(0, true);
+
+                ths._remote_free = seq + free - ths._seq;
+
+                if (ths._seq < seq)
+                {
+                    ths._remote_free -= max_seq;
+                }
+
+                ths._send();
             }
             else if (data.type === 'end')
             {
@@ -418,15 +461,21 @@ PrimusDuplex.prototype._send = function ()
         return;
     }
 
-    var cb, size = Math.min(this._remote_free, this._data.length - this._index);
+    var size = Math.min(this._remote_free, this._data.length - this._index),
+        buf = new Buffer(4),
+        hmac = crypto.createHmac('sha256', this._secret),
+        cb;
 
-    this._seq = crypto.randomBytes(this._seq_size).toString('base64');
+    this._seq = (this._seq + size) % max_seq;
 
+    buf.writeUInt32BE(this._seq, 0, true);
+    hmac.update(buf);
+    
     this._msg_stream.write(
     {
         type: 'data',
         data: this._encode_data(this._data, this._encoding, this._index, this._index + size),
-        seq: this._seq
+        seq: this._encode_data(Buffer.concat([buf, hmac.digest()], 36), null, 0, 36, true)
     });
 
     this._remote_free -= size;

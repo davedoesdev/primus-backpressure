@@ -2375,4 +2375,63 @@ describe('PrimusDuplex (browser)', function ()
             cb();
         }, cb);
     });
+
+    it.only('should support reading and writing more than the high-water mark', function (cb)
+    {
+        var buf = crypto.randomBytes(150);
+
+        in_browser(function (name, cb)
+        {
+            var client_duplex = client_duplexes[name];
+
+            client_duplex._reads = [];
+
+            client_duplex.once('readable', function ()
+            {
+                this._reads.push(this.read(150));
+
+                this.once('readable', function ()
+                {
+                    this._reads.push(this.read(150).toString('hex'));
+
+                    this.on('end', function ()
+                    {
+                        this.end();
+                    });
+
+                    this.once('readable', function ()
+                    {
+                        this._reads.push(this.read());
+                    });
+                });
+            });
+
+            cb();
+        }, get_client_duplex_name(), null, function (err)
+        {
+            get_server().on('end', function ()
+            {
+                expect(this._remote_free).to.equal(256);
+
+                in_browser(function (name, cb)
+                {
+                    var client_duplex = client_duplexes[name];
+                    cb(null, client_duplex._reads, client_duplex._readableState.highWaterMark);
+
+                }, get_client_duplex_name(), function (reads, hwm, cb)
+                {
+                    expect(reads).to.eql([null, buf.toString('hex'), null]);
+                    expect(hwm).to.equal(256);
+                    cb();
+                }, cb);
+            });
+
+            get_server().on('readable', function ()
+            {
+                this.read();
+            });
+
+            get_server().end(buf);
+        });
+    });
 });

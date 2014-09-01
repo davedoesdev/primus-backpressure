@@ -1355,4 +1355,44 @@ describe('PrimusDuplex (Node)', function ()
             });
         });
     });
+
+    it('should support reading and writing more than the high-water mark', function (cb)
+    {
+        var buf = crypto.randomBytes(150);
+
+        get_client().once('readable', function ()
+        {
+            expect(this.read(150)).to.equal(null);
+
+            this.once('readable', function ()
+            {
+                expect(get_server()._remote_free).to.equal(106);
+                expect(this.read(150).toString('hex')).to.equal(buf.toString('hex'));
+
+                this.on('end', function ()
+                {
+                    expect(this._readableState.highWaterMark).to.equal(256);
+                    this.end();
+                });
+
+                this.once('readable', function ()
+                {
+                    expect(this.read()).to.equal(null);
+                });
+            });
+        });
+
+        get_server().on('end', function ()
+        {
+            expect(this._remote_free).to.equal(256);
+            cb();
+        });
+
+        get_server().on('readable', function ()
+        {
+            this.read();
+        });
+
+        get_server().end(buf);
+    });
 });

@@ -104,7 +104,7 @@ module.exports = function (grunt)
     grunt.registerTask('coverage', ['exec:cover', 'exec:check_cover']);
     grunt.registerTask('coveralls', 'exec:coveralls');
     grunt.registerTask('bundle', 'webpack:bundle');
-    grunt.registerTask('default', ['jslint', 'cafemocha']);
+    grunt.registerTask('default', ['lint', 'test']);
 
     grunt.registerTask('sleep', function (ms)
     {

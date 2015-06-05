@@ -1,7 +1,7 @@
 {
   "name": "primus-backpressure",
   "description": "Node streams2 over Primus: added back-pressure!",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "homepage": "https://github.com/davedoesdev/primus-backpressure",
   "author": {
     "name": "David Halls",

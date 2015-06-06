@@ -16,7 +16,7 @@ Exerting backpressure over Primus:
 
 ```javascript
 var Primus = require('primus'),
-    PrimusDuplex = require('..').PrimusDuplex,
+    PrimusDuplex = require('primus-backpressure').PrimusDuplex,
     primus = Primus.createServer({ port: 9000 }),
     Socket = primus.Socket,
     assert = require('assert'),
@@ -63,7 +63,7 @@ Piping data over Primus:
 
 ```javascript
 var Primus = require('primus'),
-    PrimusDuplex = require('..').PrimusDuplex,
+    PrimusDuplex = require('primus-backpressure').PrimusDuplex,
     primus = Primus.createServer({ port: 9000 }),
     Socket = primus.Socket,
     assert = require('assert'),

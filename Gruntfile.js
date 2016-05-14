@@ -12,16 +12,11 @@ module.exports = function (grunt)
 {
     grunt.initConfig(
     {
-        jslint: {
-            all: {
-                src: [ '*.js', 'test/*.js' ],
-                directives: {
-                    white: true
-                }
-            }
+        jshint: {
+            src: [ '*.js', 'test/*.js' ]
         },
 
-        cafemocha: {
+        mochaTest: {
             default: {
                 src: [ 'test/_common.js', 'test/test_node.js' ],
                 options: {
@@ -48,10 +43,12 @@ module.exports = function (grunt)
             extraHeadingLevels: 1
         },
 
-        exec: {
+        bgShell: {
             cover: {
                 cmd: './node_modules/.bin/istanbul cover -x Gruntfile.js ./node_modules/.bin/grunt -- test --cover',
-                maxBuffer: 10000 * 1024
+                execOpts: {
+                    maxBuffer: 0
+                }
             },
 
             check_cover: {
@@ -63,47 +60,38 @@ module.exports = function (grunt)
             },
 
             start_phantomjs: {
-                cmd: 'phantomjs --webdriver=4444 --webdriver-loglevel=ERROR --debug=false &'
+                cmd: './node_modules/.bin/phantomjs --webdriver=4444 --webdriver-loglevel=ERROR --debug=false',
+                bg: true
             },
 
             stop_phantomjs: {
                 cmd: 'pkill -g 0 phantomjs'
-            }
-        },
+            },
 
-        webpack: {
             bundle: {
-                entry: path.join(__dirname, 'test', 'fixtures', 'loader.js'),
-                output: {
-                    path: path.join(__dirname, 'test', 'fixtures'),
-                    filename: 'bundle.js'
-                },
-                stats: {
-                    modules: true
-                }
+                cmd: './node_modules/.bin/webpack --module-bind json test/fixtures/loader.js test/fixtures/bundle.js'
             }
         }
     });
     
-    grunt.loadNpmTasks('grunt-jslint');
-    grunt.loadNpmTasks('grunt-cafe-mocha');
+    grunt.loadNpmTasks('grunt-contrib-jshint');
+    grunt.loadNpmTasks('grunt-mocha-test');
     grunt.loadNpmTasks('grunt-apidox');
-    grunt.loadNpmTasks('grunt-exec');
-    grunt.loadNpmTasks('grunt-webpack');
+    grunt.loadNpmTasks('grunt-bg-shell');
 
-    grunt.registerTask('lint', 'jslint:all');
-    grunt.registerTask('test', 'cafemocha:default');
-    grunt.registerTask('test-examples', 'cafemocha:examples');
-    grunt.registerTask('test-browser', ['exec:start_phantomjs',
+    grunt.registerTask('lint', 'jshint');
+    grunt.registerTask('test', 'mochaTest:default');
+    grunt.registerTask('test-examples', 'mochaTest:examples');
+    grunt.registerTask('test-browser', ['bgShell:start_phantomjs',
+                                        'bgShell:bundle',
                                         'sleep:10000',
                                         'usetheforce_on',
-                                        'cafemocha:browser',
-                                        'exec:stop_phantomjs',
+                                        'mochaTest:browser',
+                                        'bgShell:stop_phantomjs',
                                         'usetheforce_restore']);
     grunt.registerTask('docs', 'apidox');
-    grunt.registerTask('coverage', ['exec:cover', 'exec:check_cover']);
-    grunt.registerTask('coveralls', 'exec:coveralls');
-    grunt.registerTask('bundle', 'webpack:bundle');
+    grunt.registerTask('coverage', ['bgShell:cover', 'bgShell:check_cover']);
+    grunt.registerTask('coveralls', 'bgShell:coveralls');
     grunt.registerTask('default', ['lint', 'test']);
 
     grunt.registerTask('sleep', function (ms)

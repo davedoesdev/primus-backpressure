@@ -72,7 +72,7 @@ describe('PrimusDuplex (browser)', function ()
                 {
                     if (err)
                     {
-                        r.err = err.stack || err.toString();
+                        r.err = err.toString() + '\n' + err.stack;
                     }
                     else
                     {
@@ -84,7 +84,8 @@ describe('PrimusDuplex (browser)', function ()
             }
             catch (ex)
             {
-                r.err = ex.stack; done(r);
+                r.err = ex.toString() + '\n' + ex.stack;
+                done(r);
             }
         };
 
@@ -93,7 +94,7 @@ describe('PrimusDuplex (browser)', function ()
         function (err, r)
         {
             if (err) { return cb(err); }
-            if (r.err) { return cb(r.err); }
+            if (r.err) { return cb(new Error(r.err)); }
             if (!test) { return cb.apply(this, [null].concat(r.vals)); }
 
             try
@@ -150,6 +151,7 @@ describe('PrimusDuplex (browser)', function ()
 
     function wait_browser(/*f, args..., test, cb*/)
     {
+        /*jshint validthis: true */
         var ths = this,
             args = arguments,
             test = arguments[arguments.length - 2],
@@ -217,6 +219,7 @@ describe('PrimusDuplex (browser)', function ()
         {
             function drain()
             {
+                /*jshint validthis: true */
                 var buf;
                 do
                 {
@@ -1193,13 +1196,13 @@ describe('PrimusDuplex (browser)', function ()
 
                 client_duplex.on('error', function (err)
                 {
-                    cb(null, err);
+                    cb(null, err.message);
                 });
 
                 client_duplex._msg_stream.emit('error', new Error('foo'));
             }, get_client_name(), function (err, cb)
             {
-                expect(err.message).to.equal('foo');
+                expect(err).to.equal('foo');
                 cb();
             }, cb);
         };
@@ -2376,7 +2379,7 @@ describe('PrimusDuplex (browser)', function ()
         }, cb);
     });
 
-    it.only('should support reading and writing more than the high-water mark', function (cb)
+    it('should support reading and writing more than the high-water mark', function (cb)
     {
         var buf = crypto.randomBytes(150);
 

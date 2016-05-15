@@ -24726,6 +24726,8 @@
 	    this._cb = null;
 	    this._index = 0;
 	    this._finished = false;
+	    this._sending = false;
+	    this._send_requested = false;
 
 	    this._encode_data = options.encode_data || function (chunk, encoding, start, end)
 	    {
@@ -24963,7 +24965,7 @@
 	    return r;
 	};
 
-	PrimusDuplex.prototype._send = function ()
+	PrimusDuplex.prototype.__send = function ()
 	{
 	    if ((this._data === null) ||
 	        (this._remote_free <= 0))
@@ -25000,6 +25002,26 @@
 	        this._cb = null;
 	        cb();
 	    }
+	};
+
+	PrimusDuplex.prototype._send = function ()
+	{
+	    this._send_requested = true;
+
+	    if (this._sending)
+	    {
+	        return;
+	    }
+
+	    this._sending = true;
+
+	    while (this._send_requested)
+	    {
+	        this._send_requested = false;
+	        this.__send();
+	    }
+
+	    this._sending = false;
 	};
 
 	PrimusDuplex.prototype._write = function (data, encoding, cb)

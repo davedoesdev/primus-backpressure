@@ -175,7 +175,7 @@ describe('PrimusDuplex (browser)', function ()
                 }
             }
 
-            return setTimeout(function ()
+            setTimeout(function ()
             {
                 wait_browser.apply(ths, args);
             }, 500);

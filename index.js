@@ -207,7 +207,7 @@ function PrimusDuplex(msg_stream, options)
 
     this._max_write_size = options.max_write_size || 0;
     this._check_read_overflow = options.check_read_overflow !== false;
-    this._msg_stream = msg_stream;
+    this.msg_stream = msg_stream;
     this._seq = 0;
     this._secret = crypto.randomBytes(64);
     this._remote_free = 0;
@@ -247,7 +247,7 @@ function PrimusDuplex(msg_stream, options)
         if (data.type === 'end')
         {
             ths.push(null);
-            return ths._msg_stream.end();
+            return ths.msg_stream.end();
         }
 
         if (data.type !== 'handshake')
@@ -334,7 +334,7 @@ function PrimusDuplex(msg_stream, options)
 
                 if (ths._finished)
                 {
-                    ths._msg_stream.end();
+                    ths.msg_stream.end();
                 }
             }
             else
@@ -354,18 +354,18 @@ function PrimusDuplex(msg_stream, options)
 
         if (this.allowHalfOpen)
         {
-            this._msg_stream.write(
+            this.msg_stream.write(
             {
                 type: 'end'
             });
         }
         else
         {
-            this._msg_stream.end();
+            this.msg_stream.end();
         }
     });
 
-    this._msg_stream.on('end', function ()
+    this.msg_stream.on('end', function ()
     {
         ths.push(null);
 
@@ -376,7 +376,7 @@ function PrimusDuplex(msg_stream, options)
         }
     });
 
-    this._msg_stream.on('error', function (err)
+    this.msg_stream.on('error', function (err)
     {
         ths.emit('error', err);
     });
@@ -391,7 +391,7 @@ util.inherits(PrimusDuplex, stream.Duplex);
 
 PrimusDuplex.prototype._send_handshake = function ()
 {
-    this._msg_stream.write(
+    this.msg_stream.write(
     {
         type: 'handshake',
         free: Math.max(this._readableState.highWaterMark - this._readableState.length, 0)
@@ -431,7 +431,7 @@ PrimusDuplex.prototype._send_status = function ()
     };
 
     this._prev_status = msg;
-    this._msg_stream.write(msg);
+    this.msg_stream.write(msg);
 };
 
 PrimusDuplex.prototype._read = function () { return undefined; };
@@ -473,7 +473,7 @@ PrimusDuplex.prototype.__send = function ()
     buf.writeUInt32BE(this._seq, 0, true);
     hmac.update(buf);
     
-    this._msg_stream.write(
+    this.msg_stream.write(
     {
         type: 'data',
         data: this._encode_data(this._data, this._encoding, this._index, this._index + size),

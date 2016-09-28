@@ -1199,7 +1199,7 @@ describe('PrimusDuplex (browser)', function ()
                     cb(null, err.message);
                 });
 
-                client_duplex._msg_stream.emit('error', new Error('foo'));
+                client_duplex.msg_stream.emit('error', new Error('foo'));
             }, get_client_name(), function (err, cb)
             {
                 expect(err).to.equal('foo');
@@ -1228,7 +1228,7 @@ describe('PrimusDuplex (browser)', function ()
                 get_server().write('a', function (err)
                 {
                     if (err) { return cb(err); }
-                    get_server()._msg_stream.write({ type: 'foo' });
+                    get_server().msg_stream.write({ type: 'foo' });
                 });
             });
 
@@ -1248,7 +1248,7 @@ describe('PrimusDuplex (browser)', function ()
     {
         return function (cb)
         {
-            get_server()._msg_stream.once('data', function ()
+            get_server().msg_stream.once('data', function ()
             {
                 get_server().unshift(new Buffer(1));
             });
@@ -1489,7 +1489,7 @@ describe('PrimusDuplex (browser)', function ()
                 this.read();
             });
 
-            duplex._msg_stream.write({ type: 'bar' });
+            duplex.msg_stream.write({ type: 'bar' });
         });
 
         in_browser(function (url, cb)
@@ -1787,7 +1787,7 @@ describe('PrimusDuplex (browser)', function ()
             client_index += 1;
             client_duplexes[name] = client_duplex;
 
-            client_duplex._msg_stream.once('data', function ()
+            client_duplex.msg_stream.once('data', function ()
             {
                 client_duplex.unshift(new NodeBuffer(1));
             });
@@ -1855,7 +1855,7 @@ describe('PrimusDuplex (browser)', function ()
                 if (client_done) { cb(); }
             });
 
-            spark_duplex2._msg_stream.on('data', function (data)
+            spark_duplex2.msg_stream.on('data', function (data)
             {
                 if (data.type === 'data')
                 {
@@ -1907,7 +1907,7 @@ describe('PrimusDuplex (browser)', function ()
 
             client_duplex.setEncoding('utf8');
 
-            client_duplex._msg_stream.on('data', function (data)
+            client_duplex.msg_stream.on('data', function (data)
             {
                 if (data.type === 'data')
                 {
@@ -1951,9 +1951,9 @@ describe('PrimusDuplex (browser)', function ()
         in_browser(function (name, cb)
         {
             var client_duplex = client_duplexes[name],
-                orig_write = client_duplex._msg_stream.write;
+                orig_write = client_duplex.msg_stream.write;
 
-            client_duplex._msg_stream.write = function (data)
+            client_duplex.msg_stream.write = function (data)
             {
                 if (data.type === 'data')
                 {
@@ -2018,7 +2018,7 @@ describe('PrimusDuplex (browser)', function ()
                 _delay_handshake: true
             });
 
-            spark_duplex2._msg_stream.write(null);
+            spark_duplex2.msg_stream.write(null);
             spark_duplex2.end();
         });
 
@@ -2058,7 +2058,7 @@ describe('PrimusDuplex (browser)', function ()
         }, get_client_duplex_name(), null, function (err)
         {
             if (err) { cb(err); }
-            get_server()._msg_stream.write(null);
+            get_server().msg_stream.write(null);
             get_server().end();
         });
 
@@ -2176,7 +2176,7 @@ describe('PrimusDuplex (browser)', function ()
                 this.read();
             });
 
-            client_duplex._msg_stream.on('open', function ()
+            client_duplex.msg_stream.on('open', function ()
             {
                 client_duplex.end('hello');
             });
@@ -2240,7 +2240,7 @@ describe('PrimusDuplex (browser)', function ()
                 cb(null, received, intrnl, err.message);
             });
 
-            client_duplex._msg_stream.on('open', function ()
+            client_duplex.msg_stream.on('open', function ()
             {
                 client_duplex.end('hello');
             });
@@ -2306,7 +2306,7 @@ describe('PrimusDuplex (browser)', function ()
                 cb(null, received, intrnl, err.message);
             });
 
-            client_duplex._msg_stream.on('open', function ()
+            client_duplex.msg_stream.on('open', function ()
             {
                 client_duplex.end('hello');
             });

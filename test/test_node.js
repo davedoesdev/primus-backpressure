@@ -401,7 +401,7 @@ function error_event(get_duplex)
             cb();
         });
 
-        get_duplex()._msg_stream.emit('error', err);
+        get_duplex().msg_stream.emit('error', err);
     };
 }
 
@@ -418,7 +418,7 @@ function unknown_message(get_sender, get_recipient)
         get_sender().write('a', function (err)
         {
             if (err) { return cb(err); }
-            get_sender()._msg_stream.write({ type: 'foo' });
+            get_sender().msg_stream.write({ type: 'foo' });
         });
     };
 }
@@ -517,7 +517,7 @@ function emit_error(make_default_client)
                     }
                 });
 
-                spark_duplex2._msg_stream.write({ type: 'bar' });
+                spark_duplex2.msg_stream.write({ type: 'bar' });
             });
         });
     };
@@ -727,7 +727,7 @@ function read_overflow(get_sender, get_recipient)
 {
     return function (cb)
     {
-        get_recipient()._msg_stream.once('data', function ()
+        get_recipient().msg_stream.once('data', function ()
         {
             get_recipient().unshift(new Buffer(1));
         });
@@ -752,7 +752,7 @@ function disable_read_overflow(make_client)
 
             var size = 0;
 
-            client_duplex._msg_stream.once('data', function ()
+            client_duplex.msg_stream.once('data', function ()
             {
                 client_duplex.unshift(new Buffer(1));
             });
@@ -980,7 +980,7 @@ describe('PrimusDuplex (Node)', function ()
 
         client_duplex2.setEncoding('utf8');
 
-        client_duplex2._msg_stream.on('data', function (data)
+        client_duplex2.msg_stream.on('data', function (data)
         {
             if (data.type === 'data')
             {
@@ -1019,7 +1019,7 @@ describe('PrimusDuplex (Node)', function ()
 
             spark_duplex2.on('end', cb);
 
-            spark_duplex2._msg_stream.on('data', function (data)
+            spark_duplex2.msg_stream.on('data', function (data)
             {
                 if (data.type === 'data')
                 {
@@ -1046,9 +1046,9 @@ describe('PrimusDuplex (Node)', function ()
 
     it('should not write zero length data', function (cb)
     {
-        var orig_write = get_client()._msg_stream.write;
+        var orig_write = get_client().msg_stream.write;
 
-        get_client()._msg_stream.write = function (data)
+        get_client().msg_stream.write = function (data)
         {
             if (data.type === 'data')
             {
@@ -1110,7 +1110,7 @@ describe('PrimusDuplex (Node)', function ()
                 cb();
             });
 
-            client_duplex2._msg_stream.write(null);
+            client_duplex2.msg_stream.write(null);
         });
     });
 
@@ -1122,7 +1122,7 @@ describe('PrimusDuplex (Node)', function ()
             cb();
         });
 
-        get_client()._msg_stream.write(null);
+        get_client().msg_stream.write(null);
     });
 
     it('should support not decoding data', function (cb)

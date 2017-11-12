@@ -45,14 +45,18 @@ module.exports = function (grunt)
 
         bgShell: {
             cover: {
-                cmd: './node_modules/.bin/istanbul cover -x Gruntfile.js ./node_modules/.bin/grunt -- test --cover',
+                cmd: "./node_modules/.bin/nyc -x Gruntfile.js -x 'test/**' ./node_modules/.bin/grunt test",
                 execOpts: {
                     maxBuffer: 0
                 }
             },
 
-            check_cover: {
-                cmd: './node_modules/.bin/istanbul check-coverage --statement 100 --branch 100 --function 100 --line 100'
+            cover_report: {
+                cmd: './node_modules/.bin/nyc report -r lcov'
+            },
+
+            cover_check: {
+                cmd: './node_modules/.bin/nyc check-coverage --statement 100 --branch 100 --function 100 --line 100'
             },
 
             coveralls: {
@@ -90,7 +94,9 @@ module.exports = function (grunt)
                                         'bgShell:stop_phantomjs',
                                         'usetheforce_restore']);
     grunt.registerTask('docs', 'apidox');
-    grunt.registerTask('coverage', ['bgShell:cover', 'bgShell:check_cover']);
+    grunt.registerTask('coverage', ['bgShell:cover',
+                                    'bgShell:cover_report',
+                                    'bgShell:cover_check']);
     grunt.registerTask('coveralls', 'bgShell:coveralls');
     grunt.registerTask('default', ['lint', 'test']);
 

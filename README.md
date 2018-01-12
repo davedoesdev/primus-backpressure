@@ -184,8 +184,8 @@ Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for
 
 **Parameters:**
 
-- `{Object} msg_stream` The Primus client or spark you wish to exert back-pressure over. 
-- `{Object} [options]` Configuration options. This is passed onto `stream.Duplex` and can contain the following extra properties: 
+- `{Object} msg_stream` The Primus client or spark you wish to exert back-pressure over.
+- `{Object} [options]` Configuration options. This is passed onto `stream.Duplex` and can contain the following extra properties:
   - `{Function} [encode_data(chunk, encoding, start, end, internal)]` Optional encoding function for data passed to [`writable.write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback). `chunk` and `encoding` are as described in the `writable.write` documentation. The difference is that `encode_data` is synchronous (it must return the encoded data) and it should only encode data between the `start` and `end` positions in `chunk`. Defaults to a function which does `chunk.toString('base64', start, end)`. Note that `PrimusDuplex` may also pass some internal data through this function (always with `chunk` as a `Buffer`, `encoding=null` and `internal=true`).
 
   - `{Function} [decode_data(chunk, internal)]` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a function which does `new Buffer(chunk, 'base64')`. If the data can't be decoded, return `null` (and optionally call `this.emit` to emit an error). Note that `PrimusDuplex` may also pass some internal data through this function (always with `internal=true`) &mdash; in which case you must return a `Buffer`.
@@ -204,7 +204,7 @@ Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for
 
 **Parameters:**
 
-- `{Number} [size]` Optional argument to specify how much data to read. Defaults to `undefined` (you can also specify `null`) which means return all the data available. 
+- `{Number} [size]` Optional argument to specify how much data to read. Defaults to `undefined` (you can also specify `null`) which means return all the data available.
 - `{Boolean} [send_status]` Every time you call `read`, a status message is sent to the peer `PrimusDuplex` indicating how much space is left in the internal buffer to receive new data. To prevent deadlock, these status messages are always sent &mdash; they aren't subject to back-pressure. Normally this is fine because status messages are small. However, if your application reads data one byte at a time, for example, you may wish to control when status messages are sent. To stop a status message being sent when you call `read`, pass `send_status` as `false`. `send_status` defaults to `true`. To force a status message to be sent without reading any data, call `read(0)`.
 
 <sub>Go: [TOC](#tableofcontents) | [PrimusDuplex.prototype](#toc_primusduplexprototype)</sub>

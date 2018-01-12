@@ -40,7 +40,8 @@ module.exports = function (grunt)
             input: 'index.js',
             output: 'README.md',
             fullSourceDescription: true,
-            extraHeadingLevels: 1
+            extraHeadingLevels: 1,
+            doxOptions: { skipSingleStar: true }
         },
 
         bgShell: {

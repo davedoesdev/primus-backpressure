@@ -642,6 +642,11 @@ function disallow_half_open(make_client)
                     if (client_done) { cb(); }
                 });
 
+                spark_duplex2.on('error', function (err)
+                {
+                    expect(err.code).to.equal('ECONNRESET');
+                });
+
                 // should close for read too
                 client_duplex.end();
             });

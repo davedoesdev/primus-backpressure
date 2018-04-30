@@ -1,7 +1,7 @@
 {
   "name": "primus-backpressure",
   "description": "Node streams2 over Primus: added back-pressure!",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "homepage": "https://github.com/davedoesdev/primus-backpressure",
   "author": {
     "name": "David Halls",
@@ -55,7 +55,7 @@
     "async": "~2.6.0",
     "serve-static": "~1.13.1",
     "finalhandler": "~1.1.0",
-    "wd": "~1.5.0",
+    "wd": "~1.6.2",
     "phantomjs-prebuilt": "~2.1.16",
     "json-loader": "~0.5.7"
   }

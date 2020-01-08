@@ -74,7 +74,7 @@ module.exports = function (grunt)
             },
 
             bundle: {
-                cmd: './node_modules/.bin/webpack --module-bind json test/fixtures/loader.js test/fixtures/bundle.js'
+                cmd: './node_modules/.bin/webpack --mode production --config test/webpack.config'
             }
         }
     });

@@ -192,7 +192,7 @@ Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for
 @param {Object} [options] Configuration options. This is passed onto `stream.Duplex` and can contain the following extra properties:
 - `{Function} [encode_data(chunk, encoding, start, end, internal)]` Optional encoding function for data passed to [`writable.write`](http://nodejs.org/api/stream.html#stream_writable_write_chunk_encoding_callback). `chunk` and `encoding` are as described in the `writable.write` documentation. The difference is that `encode_data` is synchronous (it must return the encoded data) and it should only encode data between the `start` and `end` positions in `chunk`. Defaults to a function which does `chunk.toString('base64', start, end)`. Note that `PrimusDuplex` may also pass some internal data through this function (always with `chunk` as a `Buffer`, `encoding=null` and `internal=true`).
 
-- `{Function} [decode_data(chunk, internal)]` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a function which does `new Buffer(chunk, 'base64')`. If the data can't be decoded, return `null` (and optionally call `this.emit` to emit an error). Note that `PrimusDuplex` may also pass some internal data through this function (always with `internal=true`) &mdash; in which case you must return a `Buffer`.
+- `{Function} [decode_data(chunk, internal)]` Optional decoding function for data received on the Primus connection. The type of `chunk` will depend on how the peer `PrimusDuplex` encoded it. Defaults to a function which does `Buffer.from(chunk, 'base64')`. If the data can't be decoded, return `null` (and optionally call `this.emit` to emit an error). Note that `PrimusDuplex` may also pass some internal data through this function (always with `internal=true`) &mdash; in which case you must return a `Buffer`.
 
 - `{Integer} [max_write_size]` Maximum number of bytes to write onto the Primus connection at once, regardless of how many bytes the peer is free to receive. Defaults to 0 (no limit).
 
@@ -231,7 +231,7 @@ function PrimusDuplex(msg_stream, options)
             return null;
         }
 
-        return new Buffer(chunk, 'base64');
+        return Buffer.from(chunk, 'base64');
     };
 
     var ths = this;
@@ -463,7 +463,7 @@ PrimusDuplex.prototype.__send = function ()
     }
 
     var size = Math.min(this._remote_free, this._data.length - this._index),
-        buf = new Buffer(4),
+        buf = Buffer.alloc(4),
         hmac = crypto.createHmac('sha256', this._secret),
         cb;
 

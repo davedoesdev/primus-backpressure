@@ -580,7 +580,7 @@ describe('PrimusDuplex (browser)', function ()
                 }, 2000);
             }, cb);
 
-            expr(expect(get_server().write(new Buffer(101))).to.be.false);
+            expr(expect(get_server().write(Buffer.alloc(101))).to.be.false);
 
             get_server().on('drain', function ()
             {
@@ -1250,7 +1250,7 @@ describe('PrimusDuplex (browser)', function ()
         {
             get_server().msg_stream.once('data', function ()
             {
-                get_server().unshift(new Buffer(1));
+                get_server().unshift(Buffer.alloc(1));
             });
 
             get_server().on('error', function (err)
@@ -1294,7 +1294,7 @@ describe('PrimusDuplex (browser)', function ()
             {
                 if (err) { return cb(err); }
                 get_server().write('a');
-                get_server().write(new Buffer(100));
+                get_server().write(Buffer.alloc(100));
             });
 
             wait_browser(function (name, cb)
@@ -1747,7 +1747,7 @@ describe('PrimusDuplex (browser)', function ()
 
             expect(Buffer.concat(client_in.map(function (s)
             {
-                return new Buffer(s, 'base64');
+                return Buffer.from(s, 'base64');
             }))).to.eql(server_out);
             expect(Buffer.concat(server_in)).to.eql(client_out);
 
@@ -1772,7 +1772,7 @@ describe('PrimusDuplex (browser)', function ()
         primus.once('connection', function (spark2)
         {
             var spark_duplex2 = new PrimusDuplex(spark2);
-            spark_duplex2.end(new Buffer(100));
+            spark_duplex2.end(Buffer.alloc(100));
         });
 
         in_browser(function (url, cb)
@@ -1835,7 +1835,7 @@ describe('PrimusDuplex (browser)', function ()
 
         function decode(chunk, internal)
         {
-            return internal ? new Buffer(chunk, 'base64') : chunk;
+            return internal ? Buffer.from(chunk, 'base64') : chunk;
         }
 
         primus.once('connection', function (spark2)
@@ -2114,7 +2114,7 @@ describe('PrimusDuplex (browser)', function ()
             });
         }, client_url, function (received, read_data, cb)
         {
-            expect(received).to.equal(new Buffer('hello').toString('base64'));
+            expect(received).to.equal(Buffer.from('hello').toString('base64'));
             expect(read_data).to.equal(null);
             cb();
         }, cb);
@@ -2182,7 +2182,7 @@ describe('PrimusDuplex (browser)', function ()
             });
         }, client_url, function (received, internal, remote_free, cb)
         {
-            var buf = new Buffer(received, 'base64');
+            var buf = Buffer.from(received, 'base64');
             expect(buf.readUInt32BE(0)).to.equal(5);
             expect(internal).to.equal(true);
             expect(remote_free).to.equal(spark_duplex2._readableState.highWaterMark - 5);
@@ -2246,7 +2246,7 @@ describe('PrimusDuplex (browser)', function ()
             });
         }, client_url, function (received, internal, msg, cb)
         {
-            var buf = new Buffer(received, 'base64');
+            var buf = Buffer.from(received, 'base64');
             expect(buf.length).to.equal(36);
             expect(buf.readUInt32BE(0)).to.equal(5);
             expect(internal).to.equal(true);
@@ -2312,7 +2312,7 @@ describe('PrimusDuplex (browser)', function ()
             });
         }, client_url, function (received, internal, msg, cb)
         {
-            var buf = new Buffer(received, 'base64');
+            var buf = Buffer.from(received, 'base64');
             expect(buf.length).to.equal(36);
             expect(buf.readUInt32BE(0)).to.equal(5);
             expect(internal).to.equal(true);
@@ -2326,6 +2326,12 @@ describe('PrimusDuplex (browser)', function ()
         get_server().once('readable', function ()
         {
             expect(this.read().toString()).to.equal('hel');
+
+            _in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+                client_duplex.end('lo there');
+            }, get_client_duplex_name(), null, function () {});
 
             this.once('readable', function ()
             {
@@ -2368,13 +2374,12 @@ describe('PrimusDuplex (browser)', function ()
             });
 
             client_duplex.write('hel');
-            client_duplex.end('lo there');
         }, get_client_duplex_name(), function (lengths, seqs, _seqs, _remote_frees, cb)
         {
             expect(lengths).to.eql([36, 36]);
             expect(seqs).to.eql([Math.pow(2, 32) - 4 + 3, 7]);
-            expect(_seqs).to.eql([7, 7, 7]);
-            expect(_remote_frees).to.eql([89, 92, 100]);
+            expect(_seqs).to.eql([Math.pow(2, 32) - 4 + 3, 7, 7]);
+            expect(_remote_frees).to.eql([97, 92, 100]);
             cb();
         }, cb);
     });

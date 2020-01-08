@@ -148,7 +148,7 @@ function delay_status(get_sender, get_recipient)
             }
         });
 
-        expr(expect(get_sender().write(new Buffer(101))).to.be.false);
+        expr(expect(get_sender().write(Buffer.alloc(101))).to.be.false);
 
         get_sender().on('drain', function ()
         {
@@ -734,7 +734,7 @@ function read_overflow(get_sender, get_recipient)
     {
         get_recipient().msg_stream.once('data', function ()
         {
-            get_recipient().unshift(new Buffer(1));
+            get_recipient().unshift(Buffer.alloc(1));
         });
 
         get_recipient().on('error', function (err)
@@ -743,7 +743,7 @@ function read_overflow(get_sender, get_recipient)
             cb();
         });
 
-        get_sender().write(new Buffer(100));
+        get_sender().write(Buffer.alloc(100));
     };
 }
 
@@ -759,7 +759,7 @@ function disable_read_overflow(make_client)
 
             client_duplex.msg_stream.once('data', function ()
             {
-                client_duplex.unshift(new Buffer(1));
+                client_duplex.unshift(Buffer.alloc(1));
             });
 
             client_duplex.on('end', function ()
@@ -789,7 +789,7 @@ function disable_read_overflow(make_client)
             primus.once('connection', function (spark2)
             {
                 var spark_duplex2 = new PrimusDuplex(spark2);
-                spark_duplex2.end(new Buffer(100));
+                spark_duplex2.end(Buffer.alloc(100));
             });
         });
     };
@@ -972,7 +972,7 @@ describe('PrimusDuplex (Node)', function ()
 
         function decode(chunk, internal)
         {
-            return internal ? new Buffer(chunk, 'base64') : chunk;
+            return internal ? Buffer.from(chunk, 'base64') : chunk;
         }
 
         var json = JSON.stringify([4, { foo: 34.231123 }, 'hi\u1234\nthere']),
@@ -1064,8 +1064,8 @@ describe('PrimusDuplex (Node)', function ()
             orig_write.call(this, data);
         };
 
-        get_client().write(new Buffer(0));
-        get_client().write(new Buffer(1));
+        get_client().write(Buffer.alloc(0));
+        get_client().write(Buffer.alloc(1));
     });
 
     it('should emit an error when encoded data is not a string', function (cb)
@@ -1137,7 +1137,7 @@ describe('PrimusDuplex (Node)', function ()
         function decode(chunk, internal)
         {
             received = chunk;
-            return internal ? new Buffer(chunk, 'base64') : null;
+            return internal ? Buffer.from(chunk, 'base64') : null;
         }
 
         client_duplex2 = new PrimusDuplex(new Socket(client_url),
@@ -1147,7 +1147,7 @@ describe('PrimusDuplex (Node)', function ()
 
         client_duplex2.on('end', function ()
         {
-            expect(received).to.equal(new Buffer('hello').toString('base64'));
+            expect(received).to.equal(Buffer.from('hello').toString('base64'));
             this.end();
             cb();
         });
@@ -1183,7 +1183,7 @@ describe('PrimusDuplex (Node)', function ()
         client_duplex2.on('end', function ()
         {
             expect(this._remote_free).to.equal(spark_duplex2._readableState.highWaterMark - 5);
-            var buf = new Buffer(received, 'base64');
+            var buf = Buffer.from(received, 'base64');
             expect(buf.readUInt32BE(0)).to.equal(5);
             cb();
         });
@@ -1223,10 +1223,10 @@ describe('PrimusDuplex (Node)', function ()
         function decode(chunk, internal)
         {
             expect(internal).to.equal(true);
-            var buf = new Buffer(chunk, 'base64');
+            var buf = Buffer.from(chunk, 'base64');
             expect(buf.length).to.equal(36);
             expect(buf.readUInt32BE(0)).to.equal(5);
-            return Buffer.concat([buf, new Buffer(1)]);
+            return Buffer.concat([buf, Buffer.alloc(1)]);
         }
 
         client_duplex2 = new PrimusDuplex(new Socket(client_url),
@@ -1270,7 +1270,7 @@ describe('PrimusDuplex (Node)', function ()
         function decode(chunk, internal)
         {
             expect(internal).to.equal(true);
-            var buf = new Buffer(chunk, 'base64');
+            var buf = Buffer.from(chunk, 'base64');
             expect(buf.length).to.equal(36);
             expect(buf.readUInt32BE(0)).to.equal(5);
             buf[20] ^= 1;
@@ -1318,7 +1318,7 @@ describe('PrimusDuplex (Node)', function ()
 
         get_client()._decode_data = function (chunk, internal)
         {
-            var buf = new Buffer(chunk, 'base64');
+            var buf = Buffer.from(chunk, 'base64');
             expect(buf.length).to.equal(36);
             expect(buf.readUInt32BE(0)).to.equal(expected_seq);
             expected_seq = 7;
@@ -1346,7 +1346,6 @@ describe('PrimusDuplex (Node)', function ()
         });
 
         get_client().write('hel');
-        get_client().end('lo there');
 
         get_server().once('readable', function ()
         {
@@ -1358,6 +1357,8 @@ describe('PrimusDuplex (Node)', function ()
                 expect(this.read()).to.equal(null);
                 this.end();
             });
+
+            get_client().end('lo there');
         });
     });
 

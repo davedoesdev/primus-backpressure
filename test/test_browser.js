@@ -1248,7 +1248,7 @@ describe('PrimusDuplex (browser)', function ()
     {
         return function (cb)
         {
-            get_server().msg_stream.once('data', function ()
+            get_server().msg_stream.prependOnceListener('data', function ()
             {
                 get_server().unshift(Buffer.alloc(1));
             });
@@ -1787,7 +1787,7 @@ describe('PrimusDuplex (browser)', function ()
             client_index += 1;
             client_duplexes[name] = client_duplex;
 
-            client_duplex.msg_stream.once('data', function ()
+            client_duplex.msg_stream.prependOnceListener('data', function ()
             {
                 client_duplex.unshift(new NodeBuffer(1));
             });

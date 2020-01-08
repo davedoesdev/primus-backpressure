@@ -1816,7 +1816,7 @@ describe('PrimusDuplex (browser)', function ()
             });
         }, client_url, function (size, cb)
         {
-            expect(size).to.equal(101);
+            expect(size).to.equal(103);
             cb();
         }, cb);
     });

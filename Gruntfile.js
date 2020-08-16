@@ -44,12 +44,9 @@ module.exports = function (grunt)
             doxOptions: { skipSingleStar: true }
         },
 
-        bgShell: {
+        exec: {
             cover: {
-                cmd: "./node_modules/.bin/nyc -x Gruntfile.js -x 'test/**' ./node_modules/.bin/grunt test",
-                execOpts: {
-                    maxBuffer: 0
-                }
+                cmd: "./node_modules/.bin/nyc -x Gruntfile.js -x 'test/**' ./node_modules/.bin/grunt test"
             },
 
             cover_report: {
@@ -65,8 +62,7 @@ module.exports = function (grunt)
             },
 
             start_phantomjs: {
-                cmd: './node_modules/.bin/phantomjs --webdriver=4444 --webdriver-loglevel=ERROR --debug=false',
-                bg: true
+                cmd: './node_modules/.bin/phantomjs --webdriver=4444 --webdriver-loglevel=ERROR --debug=false &'
             },
 
             stop_phantomjs: {
@@ -82,23 +78,23 @@ module.exports = function (grunt)
     grunt.loadNpmTasks('grunt-contrib-jshint');
     grunt.loadNpmTasks('grunt-mocha-test');
     grunt.loadNpmTasks('grunt-apidox');
-    grunt.loadNpmTasks('grunt-bg-shell');
+    grunt.loadNpmTasks('grunt-exec');
 
     grunt.registerTask('lint', 'jshint');
     grunt.registerTask('test', 'mochaTest:default');
     grunt.registerTask('test-examples', 'mochaTest:examples');
-    grunt.registerTask('test-browser', ['bgShell:start_phantomjs',
-                                        'bgShell:bundle',
+    grunt.registerTask('test-browser', ['exec:start_phantomjs',
+                                        'exec:bundle',
                                         'sleep:10000',
                                         'usetheforce_on',
                                         'mochaTest:browser',
-                                        'bgShell:stop_phantomjs',
+                                        'exec:stop_phantomjs',
                                         'usetheforce_restore']);
     grunt.registerTask('docs', 'apidox');
-    grunt.registerTask('coverage', ['bgShell:cover',
-                                    'bgShell:cover_report',
-                                    'bgShell:cover_check']);
-    grunt.registerTask('coveralls', 'bgShell:coveralls');
+    grunt.registerTask('coverage', ['exec:cover',
+                                    'exec:cover_report',
+                                    'exec:cover_check']);
+    grunt.registerTask('coveralls', 'exec:coveralls');
     grunt.registerTask('default', ['lint', 'test']);
 
     grunt.registerTask('sleep', function (ms)

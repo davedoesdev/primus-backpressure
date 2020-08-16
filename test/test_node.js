@@ -1374,6 +1374,7 @@ describe('PrimusDuplex (Node)', function ()
             {
                 expect(get_server()._remote_free).to.equal(106);
                 expect(this.read(150).toString('hex')).to.equal(buf.toString('hex'));
+                expect(this.read()).to.equal(null);
 
                 this.on('end', function ()
                 {

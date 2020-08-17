@@ -9,5 +9,16 @@ module.exports = {
         path: path.join(__dirname, './fixtures')
     },
     performance: { hints: false },
-    optimization: { minimize: false }
+    optimization: { minimize: false },
+    module: {
+        rules: [{
+            test: /\.js$/,
+            use: {
+                loader: 'babel-loader',
+                options: {
+                    presets: ['@babel/preset-env']
+                }
+            }
+        }]
+    }
 };

@@ -1702,7 +1702,7 @@ describe('PrimusDuplex (browser)', function ()
                 this.end();
             });
 
-            duplex.end(server_out);
+            duplex.write(server_out);
         });
 
         in_browser(function (url, client_out, cb)

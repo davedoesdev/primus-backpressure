@@ -153,7 +153,7 @@ grunt test-browser
 grunt coverage
 ```
 
-[Instanbul](http://gotwarlost.github.io/istanbul/) results are available [here](http://rawgit.davedoesdev.com/davedoesdev/primus-backpressure/master/coverage/lcov-report/index.html).
+[Istanbul](http://gotwarlost.github.io/istanbul/) results are available [here](http://rawgit.davedoesdev.com/davedoesdev/primus-backpressure/master/coverage/lcov-report/index.html).
 
 Coveralls page is [here](https://coveralls.io/r/davedoesdev/primus-backpressure).
 

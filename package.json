@@ -1,7 +1,7 @@
 {
   "name": "primus-backpressure",
   "description": "Node streams2 over Primus: added back-pressure!",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "homepage": "https://github.com/davedoesdev/primus-backpressure",
   "author": {
     "name": "David Halls",
@@ -58,7 +58,7 @@
     "serve-static": "^1.14.1",
     "tmp": "^0.2.1",
     "wd": "^1.13.0",
-    "webpack": "^4.44.1",
+    "webpack": "^4.44.2",
     "webpack-cli": "^3.3.12",
     "ws": "^7.3.1"
   }

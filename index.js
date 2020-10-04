@@ -200,7 +200,10 @@ Both sides of a Primus connection must use `PrimusDuplex` &mdash; create one for
 */
 function PrimusDuplex(msg_stream, options)
 {
-    stream.Duplex.call(this, options);
+    stream.Duplex.call(this, Object.assign(
+    {
+        autoDestroy: true
+    }, options));
 
     options = options || {};
 

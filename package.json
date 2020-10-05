@@ -35,7 +35,7 @@
     "message"
   ],
   "engines": {
-    "node": ">= 8"
+    "node": ">= 10"
   },
   "dependencies": {},
   "devDependencies": {

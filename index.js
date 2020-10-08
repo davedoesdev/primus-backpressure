@@ -532,7 +532,7 @@ PrimusDuplex.prototype._write = function (data, encoding, cb)
 PrimusDuplex.prototype._destroy = function (err, cb)
 {
     this.msg_stream.end();
-    cb();
+    cb(err);
 };
 
 exports.PrimusDuplex = PrimusDuplex;

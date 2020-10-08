@@ -1414,4 +1414,22 @@ describe('PrimusDuplex (Node)', function ()
         get_client().on('close', cb).resume();
         get_server().destroy();
     });
+
+    it('should close when client-side destroyed with error', function (cb)
+    {
+        get_server().on('close', cb).resume();
+        get_client().on('error', function (err) {
+            expect(err.message).to.equal('foo');
+        });
+        get_client().destroy(new Error('foo'));
+    });
+
+    it('should close when server-side destroyed with error', function (cb)
+    {
+        get_client().on('close', cb).resume();
+        get_server().on('error', function (err) {
+            expect(err.message).to.equal('foo');
+        });
+        get_server().destroy(new Error('foo'));
+    });
 });

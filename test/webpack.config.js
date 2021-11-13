@@ -1,5 +1,5 @@
-var webpack = require('webpack'),
-    path = require('path');
+const webpack = require('webpack');
+const path = require('path');
 
 module.exports = {
     context: __dirname,
@@ -13,20 +13,28 @@ module.exports = {
     module: {
         rules: [{
             test: /\.js$/,
-            use: {
-                loader: 'babel-loader',
-                options: {
-                    presets: [
-                        [
-                            '@babel/preset-env',
-                            {
-                                useBuiltIns: 'entry',
-                                corejs: 3
-                            }
-                        ]
-                    ]
-                }
-            }
+            enforce: 'pre',
+            use: ['source-map-loader']
         }]
-    }
+    },
+    devtool: 'source-map',
+    resolve: {
+        fallback: {
+            crypto: 'crypto-browserify',
+            stream: 'stream-browserify',
+            util: 'util',
+            buffer: 'buffer'
+        },
+        alias: {
+            process: 'process/browser'
+        }
+    },
+    plugins: [
+        new webpack.ProvidePlugin({
+            process: 'process'
+        }),
+        new webpack.ProvidePlugin({
+            Buffer: ['buffer', 'Buffer']
+        })
+    ]
 };

@@ -63,6 +63,11 @@ before(function ()
     global.Socket = primus.Socket;
 });
 
+after(function (cb)
+{
+    primus.destroy(cb);
+});
+
 before(function (cb)
 {
     primus.save(path.join(__dirname, 'fixtures', 'primus.js'), cb);

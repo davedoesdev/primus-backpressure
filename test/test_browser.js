@@ -1,19 +1,19 @@
 /*global expect: false,
          expr: false,
          crypto: false,
-         node_crypto: false,
-         client_duplexes: false,
          it: false,
          get_server: false,
          Primus: false,
          PrimusDuplex: false,
-         client_url: false,
+         client_duplexes: false,
+         node_crypto: false,
          client_index: true,
+         NodeBuffer: false,
+         client_url: false,
          primus: false,
          fs: false,
          tmp: false,
          random_fname: false,
-         NodeBuffer: false,
          closedown: false,
          connect: false,
          beforeEach: false,
@@ -21,7 +21,6 @@
          describe: false,
          before: false,
          after: false,
-         browser_timeout: false,
          static_url: false,
          async: false */
 /*jslint node: true, nomen: true, unparam: true, bitwise: true */
@@ -33,19 +32,27 @@ describe('PrimusDuplex (browser)', function ()
 {
     var browser,
         client_duplex_name,
-        in_browser_queue;
+        in_browser_queue,
+        timeout = this.timeout();
 
     before(function (cb)
     {
         browser = wd.remote();
 
-        browser.init({ browserName: 'phantomjs' }, function (err)
+        browser.init(
+        {
+            browserName: 'chrome',
+            chromeOptions: {
+                w3c: false
+            }
+        },
+        function (err)
         {
             if (err) { return cb(err); }
             browser.get(static_url + '/loader.html', function (err)
             {
                 if (err) { return cb(err); }
-                browser.setAsyncScriptTimeout(browser_timeout, cb);
+                browser.setAsyncScriptTimeout(timeout, cb);
             });
         });
     });
@@ -637,7 +644,7 @@ describe('PrimusDuplex (browser)', function ()
             in_browser(function (name, cb)
             {
                 var client_duplex = client_duplexes[name],
-                    r = client_duplex.write(new NodeBuffer(101));
+                    r = client_duplex.write(NodeBuffer.alloc(101));
 
                 client_duplex.drain_count = 0;
 
@@ -1261,7 +1268,7 @@ describe('PrimusDuplex (browser)', function ()
             in_browser(function (name, cb)
             {
                 var client_duplex = client_duplexes[name];
-                client_duplex.write(new NodeBuffer(100));
+                client_duplex.write(NodeBuffer.alloc(100));
                 cb();
             }, get_client_name(), null, function (err)
             {
@@ -1280,8 +1287,8 @@ describe('PrimusDuplex (browser)', function ()
 
                 client_duplex.once('readable', function ()
                 {
-                    this.read();
-                    client_duplex.unshift(new NodeBuffer(2));
+                    this.read(1);
+                    this.unshift(NodeBuffer.alloc(2));
                 });
 
                 client_duplex.on('error', function (err)
@@ -1789,7 +1796,7 @@ describe('PrimusDuplex (browser)', function ()
 
             client_duplex.msg_stream.on('data', function ()
             {
-                client_duplex.unshift(new NodeBuffer(1));
+                client_duplex.unshift(NodeBuffer.alloc(1));
             });
 
             client_duplex.on('end', function ()
@@ -1889,7 +1896,7 @@ describe('PrimusDuplex (browser)', function ()
 
             function decode2(chunk, internal)
             {
-                return internal ? new NodeBuffer(chunk, 'base64') : chunk;
+                return internal ? NodeBuffer.from(chunk, 'base64') : chunk;
             }
 
             var client_duplex = new PrimusDuplex(new Primus(url),
@@ -1963,8 +1970,8 @@ describe('PrimusDuplex (browser)', function ()
                 orig_write.call(this, data);
             };
 
-            client_duplex.write(new NodeBuffer(0));
-            client_duplex.write(new NodeBuffer(1));
+            client_duplex.write(NodeBuffer.alloc(0));
+            client_duplex.write(NodeBuffer.alloc(1));
         }, get_client_duplex_name(), function (len, cb)
         {
             expect(len).to.be.above(0);
@@ -2091,7 +2098,7 @@ describe('PrimusDuplex (browser)', function ()
             function decode(chunk, internal)
             {
                 received = chunk;
-                return internal ? new NodeBuffer(chunk, 'base64') : null;
+                return internal ? NodeBuffer.from(chunk, 'base64') : null;
             }
 
             client_duplex = new PrimusDuplex(new Primus(url),
@@ -2223,8 +2230,8 @@ describe('PrimusDuplex (browser)', function ()
             {
                 received = chunk;
                 intrnl = internal;
-                var buf = new NodeBuffer(chunk, 'base64');
-                return NodeBuffer.concat([buf, new NodeBuffer(1)]);
+                var buf = NodeBuffer.from(chunk, 'base64');
+                return NodeBuffer.concat([buf, NodeBuffer.alloc(1)]);
             }
 
             client_duplex = new PrimusDuplex(new Primus(url),
@@ -2288,7 +2295,7 @@ describe('PrimusDuplex (browser)', function ()
             {
                 received = chunk;
                 intrnl = internal;
-                var buf = new NodeBuffer(chunk, 'base64');
+                var buf = NodeBuffer.from(chunk, 'base64');
                 buf[20] ^= 1;
                 return buf;
             }
@@ -2327,64 +2334,66 @@ describe('PrimusDuplex (browser)', function ()
         {
             expect(this.read().toString()).to.equal('hel');
 
-            _in_browser(function (name, cb)
-            {
-                var client_duplex = client_duplexes[name];
-                client_duplex.end('lo there');
-            }, get_client_duplex_name(), null, function () {});
-
             this.once('readable', function ()
             {
                 expect(this.read().toString()).to.equal('lo there');
                 expect(this.read()).to.equal(null);
                 this.end();
             });
+
+            in_browser(function (name, cb)
+            {
+                var client_duplex = client_duplexes[name];
+
+                client_duplex.on('end', function ()
+                {
+                    window._remote_frees.push(this._remote_free);
+                    window._seqs.push(this._seq);
+                    cb(null, window.lengths, window.seqs, window._seqs, window._remote_frees);
+                });
+
+                client_duplex.end('lo there');
+            }, get_client_duplex_name(), function (lengths, seqs, _seqs, _remote_frees, cb)
+            {
+                expect(lengths).to.eql([36, 36]);
+                expect(seqs).to.eql([Math.pow(2, 32) - 4 + 3, 7]);
+                expect(_seqs).to.eql([Math.pow(2, 32) - 4 + 3, 7, 7]);
+                expect(_remote_frees).to.eql([97, 92, 100]);
+                cb();
+            }, cb);
         });
 
         in_browser(function (name, cb)
         {
-            var client_duplex = client_duplexes[name],
-                lengths = [],
-                seqs = [],
-                _seqs = [],
-                _remote_frees = [];
+            window.lengths = [];
+            window.seqs = [];
+            window._seqs = [];
+            window._remote_frees = [];
+
+            var client_duplex = client_duplexes[name];
 
             client_duplex._decode_data = function (chunk, internal)
             {
-                var buf = new NodeBuffer(chunk, 'base64');
-                lengths.push(buf.length);
-                seqs.push(buf.readUInt32BE(0));
-                _seqs.push(this._seq);
-                _remote_frees.push(this._remote_free);
+                var buf = NodeBuffer.from(chunk, 'base64');
+                window.lengths.push(buf.length);
+                window.seqs.push(buf.readUInt32BE(0));
+                window._seqs.push(this._seq);
+                window._remote_frees.push(this._remote_free);
                 return buf;
             };
 
             client_duplex._seq = Math.pow(2, 32) - 4;
-
-            client_duplex.on('end', function ()
-            {
-                _remote_frees.push(this._remote_free);
-                _seqs.push(this._seq);
-                cb(null, lengths, seqs, _seqs, _remote_frees);
-            });
 
             client_duplex.on('readable', function ()
             {
                 this.read();
             });
 
-            client_duplex.write('hel');
-        }, get_client_duplex_name(), function (lengths, seqs, _seqs, _remote_frees, cb)
-        {
-            expect(lengths).to.eql([36, 36]);
-            expect(seqs).to.eql([Math.pow(2, 32) - 4 + 3, 7]);
-            expect(_seqs).to.eql([Math.pow(2, 32) - 4 + 3, 7, 7]);
-            expect(_remote_frees).to.eql([97, 92, 100]);
-            cb();
-        }, cb);
+            client_duplex.write('hel', cb);
+        }, get_client_duplex_name(), null, function () {});
     });
 
-    it('should support reading and writing more than the high-water mark', function (cb)
+    it.only('should support reading and writing more than the high-water mark', function (cb)
     {
         var buf = crypto.randomBytes(150);
 
@@ -2394,31 +2403,30 @@ describe('PrimusDuplex (browser)', function ()
 
             client_duplex._reads = [];
 
+            client_duplex.on('end', function ()
+            {
+                this.end();
+            });
+
             client_duplex.once('readable', function ()
             {
-                this._reads.push(this.read(150));
-
                 this.once('readable', function ()
                 {
                     this._reads.push(this.read(150).toString('hex'));
-
-                    this.on('end', function ()
-                    {
-                        this.end();
-                    });
-
-                    this.once('readable', function ()
-                    {
-                        this._reads.push(this.read());
-                    });
+                    this._reads.push(this.read());
                 });
+
+                this._reads.push(this.read(150));
             });
 
             cb();
         }, get_client_duplex_name(), null, function (err)
         {
+            if (err) { return cb(err); }
+
             get_server().on('end', function ()
             {
+                // Node.js raises the hwm to next power of 2 after a read
                 expect(this._remote_free).to.equal(256);
 
                 in_browser(function (name, cb)

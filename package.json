@@ -18,8 +18,7 @@
   "license": "MIT",
   "main": "index.js",
   "scripts": {
-    "test": "grunt lint test",
-    "travis-test": "grunt lint coverage test-examples test-browser coveralls"
+    "test": "grunt lint test"
   },
   "directories": {
     "test": "test"

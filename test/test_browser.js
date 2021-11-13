@@ -43,8 +43,9 @@ describe('PrimusDuplex (browser)', function ()
         {
             browserName: 'chrome',
             chromeOptions: {
-                w3c: false
-            }
+                w3c: false,
+                args: ['--headless']
+            },
         },
         function (err)
         {

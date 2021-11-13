@@ -2348,9 +2348,9 @@ describe('PrimusDuplex (browser)', function ()
 
                 client_duplex.on('end', function ()
                 {
-                    window._remote_frees.push(this._remote_free);
-                    window._seqs.push(this._seq);
-                    cb(null, window.lengths, window.seqs, window._seqs, window._remote_frees);
+                    this._remote_frees.push(this._remote_free);
+                    this._seqs.push(this._seq);
+                    cb(null, this.lengths, this.seqs, this._seqs, this._remote_frees);
                 });
 
                 client_duplex.end('lo there');
@@ -2366,20 +2366,20 @@ describe('PrimusDuplex (browser)', function ()
 
         in_browser(function (name, cb)
         {
-            window.lengths = [];
-            window.seqs = [];
-            window._seqs = [];
-            window._remote_frees = [];
-
             var client_duplex = client_duplexes[name];
+
+            client_duplex.lengths = [];
+            client_duplex.seqs = [];
+            client_duplex._seqs = [];
+            client_duplex._remote_frees = [];
 
             client_duplex._decode_data = function (chunk, internal)
             {
                 var buf = NodeBuffer.from(chunk, 'base64');
-                window.lengths.push(buf.length);
-                window.seqs.push(buf.readUInt32BE(0));
-                window._seqs.push(this._seq);
-                window._remote_frees.push(this._remote_free);
+                this.lengths.push(buf.length);
+                this.seqs.push(buf.readUInt32BE(0));
+                this._seqs.push(this._seq);
+                this._remote_frees.push(this._remote_free);
                 return buf;
             };
 

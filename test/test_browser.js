@@ -23,7 +23,8 @@
          after: false,
          static_url: false,
          async: false */
-/*jslint node: true, nomen: true, unparam: true, bitwise: true */
+/*eslint-env node */
+/*eslint-disable no-constant-condition */
 "use strict";
 
 var wd = require('wd');
@@ -66,17 +67,16 @@ describe('PrimusDuplex (browser)', function ()
     function _in_browser(f /*, args..., test, cb*/)
     {
         var test = arguments[arguments.length - 2],
-            cb = arguments[arguments.length - 1],
+            cb = arguments[arguments.length - 1];
 
-        f2 = function (f /*, args..., done*/)
+        var f2 = function (f /*, args..., done*/)
         {
             var r = {},
                 done = arguments[arguments.length - 1];
 
             try
             {
-                f.apply(this, Array.prototype.slice.call(arguments, 1, arguments.length - 1).concat([
-                function (err)
+                f.apply(this, Array.prototype.slice.call(arguments, 1, arguments.length - 1).concat([function (err)
                 {
                     if (err)
                     {
@@ -1420,27 +1420,28 @@ describe('PrimusDuplex (browser)', function ()
             both(multi_bytes_client_server,
                  multi_bytes_server_client,
                  get_client_duplex_name,
-                 get_server)(function (err)
-                 {
-                     if (err) { return cb(err); }
-                     done1 = true;
-                     if (done2) { done(); }
-                 });
+                 get_server)(
+            function (err)
+            {
+                if (err) { return cb(err); }
+                done1 = true;
+                if (done2) { done(); }
+            });
 
             both(multi_bytes_client_server,
                  multi_bytes_server_client,
-                 function ()
-                 {
-                     return client_duplex_name2;
-                 }, function ()
-                 {
-                     return spark_duplex2;
-                 })(function (err)
-                 {
-                     if (err) { return cb(err); }
-                     done2 = true;
-                     if (done1) { done(); }
-                 });
+            function ()
+            {
+                return client_duplex_name2;
+            }, function ()
+            {
+                return spark_duplex2;
+            })(function (err)
+            {
+                if (err) { return cb(err); }
+                done2 = true;
+                if (done1) { done(); }
+            });
         }
 
         primus.once('connection', function (spark2)
@@ -1837,8 +1838,9 @@ describe('PrimusDuplex (browser)', function ()
 
         function encode(chunk, encoding, start, end)
         {
-            return encoding ? chunk.substring(start, end) :
-                              chunk.toString('base64', start, end);
+            return encoding ?
+                chunk.substring(start, end) :
+                chunk.toString('base64', start, end);
         }
 
         function decode(chunk, internal)
@@ -1891,8 +1893,9 @@ describe('PrimusDuplex (browser)', function ()
         {
             function encode2(chunk, encoding, start, end)
             {
-                return encoding ? chunk.substring(start, end) :
-                                  chunk.toString('base64', start, end);
+                return encoding ?
+                    chunk.substring(start, end) :
+                    chunk.toString('base64', start, end);
             }
 
             function decode2(chunk, internal)
@@ -2373,7 +2376,7 @@ describe('PrimusDuplex (browser)', function ()
             client_duplex._seqs = [];
             client_duplex._remote_frees = [];
 
-            client_duplex._decode_data = function (chunk, internal)
+            client_duplex._decode_data = function (chunk)
             {
                 var buf = NodeBuffer.from(chunk, 'base64');
                 this.lengths.push(buf.length);

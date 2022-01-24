@@ -1,14 +1,10 @@
 /*global path: false,
          Primus: false,
          server_port: false,
-         beforeEach: false,
          PrimusDuplex: false,
          spark_duplex: false,
          primus: false,
          before: false,
-         Socket: false,
-         client_url: false,
-         afterEach: false,
          crypto: false,
          fs: false,
          after: false,
@@ -16,7 +12,7 @@
          static_port: false,
          random_fname: false,
          drain: false */
-/*jslint node: true, nomen: true */
+/*eslint-env node */
 "use strict";
 
 global.Primus = require('primus');

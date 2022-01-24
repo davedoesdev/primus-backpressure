@@ -1,6 +1,7 @@
 /*global describe: false,
          it: false */
-/*jslint node: true, vars: true */
+/*eslint-env node */
+/*eslint-disable indent */
 "use strict";
 
 describe('examples', function ()

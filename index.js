@@ -170,7 +170,7 @@ grunt lint
 
 Extra constructor options and an additional parameter to [`readable.read`](http://nodejs.org/api/stream.html#stream_readable_read_size) are described below.
 */
-/*jslint node: true, nomen: true, unparam: true */
+/*eslint-env node */
 
 "use strict";
 
@@ -258,7 +258,7 @@ function PrimusDuplex(msg_stream, options)
         }
 
         ths._remote_free = ths._max_write_size > 0 ?
-                Math.min(data.free, ths._max_write_size) : data.free;
+            Math.min(data.free, ths._max_write_size) : data.free;
 
         msg_stream.removeListener('data', expect_handshake);
     
@@ -317,7 +317,7 @@ function PrimusDuplex(msg_stream, options)
                 }
 
                 free = ths._max_write_size > 0 ?
-                        Math.min(data.free, ths._max_write_size) : data.free;
+                    Math.min(data.free, ths._max_write_size) : data.free;
 
                 seq = buf.readUInt32BE(0, true);
 

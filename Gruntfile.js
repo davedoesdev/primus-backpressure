@@ -1,4 +1,4 @@
-/*jslint node: true, nomen: true */
+/*eslint-env node */
 "use strict";
 
 const test_cmd = 'npx mocha --bail';
@@ -8,11 +8,8 @@ module.exports = function (grunt)
 {
     grunt.initConfig(
     {
-        jshint: {
-            src: [ '*.js', 'test/*.js' ],
-            options: {
-                esversion: 9
-            }
+        eslint: {
+            target: [ '*.js', 'test/*.js' ]
         },
 
         apidox: {
@@ -24,66 +21,44 @@ module.exports = function (grunt)
         },
 
         exec: Object.fromEntries(Object.entries({
-            test: {
-                cmd: `${test_cmd} --timeout ${5 * 60 * 1000} test/_common.js test/test_node.js`
-            },
-
-            test_examples: {
-                cmd: `${test_cmd} test/test_examples.js`
-            },
-
-            test_browser: {
-                cmd: `${test_cmd} --timeout ${10 * 60 * 1000} test/_common.js test/test_browser.js`
-            },
-
-            cover: {
-                cmd: `${c8} npx grunt test`
-            },
-
-            cover_report: {
-                cmd: `${c8} report -r lcov`
-            },
-
-            cover_check: {
-                cmd: `${c8} check-coverage --statements 100 --branches 100 --functions 100 --lines 100`
-            },
-
-            start_selenium: {
-                cmd: [
-                    'npx selenium-standalone install',
-                    '(npx selenium-standalone start &)',
-                    'while ! nc -zv -w 5 localhost 4444; do sleep 1; done'
-                ].join('&&'),
-            },
-
-            stop_selenium: {
-                // Note: we use escaping to stop pkill matching the sh process
-                cmd: "pkill -g 0 -f `echo s'\\0145'lenium-standalone`"
-            },
-
-            bundle: {
-                cmd: 'npx webpack --mode production --config test/webpack.config'
-            }
+            test: `${test_cmd} --timeout ${5 * 60 * 1000} test/_common.js test/test_node.js`,
+            test_examples: `${test_cmd} test/test_examples.js`,
+            test_browser: `${test_cmd} --timeout ${10 * 60 * 1000} test/_common.js test/test_browser.js`,
+            cover: `${c8} npx grunt test`,
+            cover_report: `${c8} report -r lcov`,
+            cover_check: `${c8} check-coverage --statements 100 --branches 100 --functions 100 --lines 100`,
+            start_selenium: [
+                'npx selenium-standalone install',
+                '(npx selenium-standalone start &)',
+                'while ! nc -zv -w 5 localhost 4444; do sleep 1; done'
+            ].join('&&'),
+            // Note: we use escaping to stop pkill matching the sh process
+            stop_selenium: "pkill -g 0 -f `echo s'\\0145'lenium-standalone`",
+            bundle: 'npx webpack --mode production --config test/webpack.config'
         }).map(([k, v]) => [k, { stdio: 'inherit', ...v }]))
     });
     
-    grunt.loadNpmTasks('grunt-contrib-jshint');
+    grunt.loadNpmTasks('grunt-eslint');
     grunt.loadNpmTasks('grunt-apidox');
     grunt.loadNpmTasks('grunt-exec');
 
-    grunt.registerTask('lint', 'jshint');
+    grunt.registerTask('lint', 'eslint');
     grunt.registerTask('test', 'exec:test');
     grunt.registerTask('test-examples', 'exec:test_examples');
-    grunt.registerTask('test-browser', ['exec:start_selenium',
-                                        'exec:bundle',
-                                        'usetheforce_on',
-                                        'exec:test_browser',
-                                        'exec:stop_selenium',
-                                        'usetheforce_restore']);
+    grunt.registerTask('test-browser', [
+        'exec:start_selenium',
+        'exec:bundle',
+        'usetheforce_on',
+        'exec:test_browser',
+        'exec:stop_selenium',
+        'usetheforce_restore'
+    ]);
     grunt.registerTask('docs', 'apidox');
-    grunt.registerTask('coverage', ['exec:cover',
-                                    'exec:cover_report',
-                                    'exec:cover_check']);
+    grunt.registerTask('coverage', [
+        'exec:cover',
+        'exec:cover_report',
+        'exec:cover_check'
+    ]);
     grunt.registerTask('default', ['lint', 'test']);
 
     // http://stackoverflow.com/questions/16612495/continue-certain-tasks-in-grunt-even-if-one-fails

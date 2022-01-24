@@ -1,6 +1,4 @@
 /*global describe: false,
-         client_duplex: false,
-         spark_duplex: false,
          expect: false,
          crypto: false,
          it: false,
@@ -12,14 +10,14 @@
          random_fname: false,
          primus: false,
          expr: false,
-         both: false,
          beforeEach: false,
          afterEach: false,
          drain: false,
          get_server: false,
          connect: false,
          closedown: false */
-/*jslint node: true, nomen: true, unparam: true, bitwise: true */
+/*eslint-env node */
+/*eslint-disable no-constant-condition */
 "use strict";
 
 function single_byte(get_sender, get_recipient)
@@ -966,8 +964,9 @@ describe('PrimusDuplex (Node)', function ()
     {
         function encode(chunk, encoding, start, end)
         {
-            return encoding ? chunk.substring(start, end) :
-                              chunk.toString('base64', start, end);
+            return encoding ?
+                chunk.substring(start, end) :
+                chunk.toString('base64', start, end);
         }
 
         function decode(chunk, internal)
@@ -1316,7 +1315,7 @@ describe('PrimusDuplex (Node)', function ()
         var expected_seq = Math.pow(2, 32) - 4 + 3,
             expected_remote_free = 89;
 
-        get_client()._decode_data = function (chunk, internal)
+        get_client()._decode_data = function (chunk)
         {
             var buf = Buffer.from(chunk, 'base64');
             expect(buf.length).to.equal(36);
@@ -1418,7 +1417,8 @@ describe('PrimusDuplex (Node)', function ()
     it('should close when client-side destroyed with error', function (cb)
     {
         get_server().on('close', cb).resume();
-        get_client().on('error', function (err) {
+        get_client().on('error', function (err)
+        {
             expect(err.message).to.equal('foo');
         });
         get_client().destroy(new Error('foo'));
@@ -1427,7 +1427,8 @@ describe('PrimusDuplex (Node)', function ()
     it('should close when server-side destroyed with error', function (cb)
     {
         get_client().on('close', cb).resume();
-        get_server().on('error', function (err) {
+        get_server().on('error', function (err)
+        {
             expect(err.message).to.equal('foo');
         });
         get_server().destroy(new Error('foo'));

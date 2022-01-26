@@ -35,7 +35,7 @@ module.exports = function (grunt)
             // Note: we use escaping to stop pkill matching the sh process
             stop_selenium: "pkill -g 0 -f `echo s'\\0145'lenium-standalone`",
             bundle: 'npx webpack --mode production --config test/webpack.config'
-        }).map(([k, v]) => [k, { stdio: 'inherit', ...v }]))
+        }).map(([k, cmd]) => [k, { cmd, stdio: 'inherit' }]))
     });
     
     grunt.loadNpmTasks('grunt-eslint');

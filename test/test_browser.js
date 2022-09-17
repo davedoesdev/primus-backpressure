@@ -2416,11 +2416,12 @@ describe('PrimusDuplex (browser)', function ()
             {
                 this.once('readable', function ()
                 {
-                    this._reads.push(this.read(150).toString('hex'));
                     this.once('readable', function ()
                     {
                         this._reads.push(this.read());
                     });
+
+                    this._reads.push(this.read(150).toString('hex'));
                 });
 
                 this._reads.push(this.read(150));

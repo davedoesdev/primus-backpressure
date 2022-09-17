@@ -2397,7 +2397,7 @@ describe('PrimusDuplex (browser)', function ()
         }, get_client_duplex_name(), null, function () {});
     });
 
-    it('should support reading and writing more than the high-water mark', function (cb)
+    it.only('should support reading and writing more than the high-water mark', function (cb)
     {
         var buf = crypto.randomBytes(150);
 
@@ -2417,7 +2417,10 @@ describe('PrimusDuplex (browser)', function ()
                 this.once('readable', function ()
                 {
                     this._reads.push(this.read(150).toString('hex'));
-                    this._reads.push(this.read());
+                    this.once('readable', function ()
+                    {
+                        this._reads.push(this.read());
+                    });
                 });
 
                 this._reads.push(this.read(150));

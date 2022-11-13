@@ -30429,6 +30429,30 @@ module.exports = function GetIntrinsic(name, allowMissing) {
 
 /***/ }),
 
+/***/ 8337:
+/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+
+"use strict";
+
+
+var GetIntrinsic = __webpack_require__(4663);
+
+var $gOPD = GetIntrinsic('%Object.getOwnPropertyDescriptor%', true);
+
+if ($gOPD) {
+	try {
+		$gOPD([], 'length');
+	} catch (e) {
+		// IE 8 has a broken gOPD
+		$gOPD = null;
+	}
+}
+
+module.exports = $gOPD;
+
+
+/***/ }),
+
 /***/ 4573:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
@@ -32274,14 +32298,16 @@ var toStr = Object.prototype.toString;
 var objectClass = '[object Object]';
 var fnClass = '[object Function]';
 var genClass = '[object GeneratorFunction]';
-var ddaClass = '[object HTMLAllCollection]';
+var ddaClass = '[object HTMLAllCollection]'; // IE 11
+var ddaClass2 = '[object HTML document.all class]';
+var ddaClass3 = '[object HTMLCollection]'; // IE 9-10
 var hasToStringTag = typeof Symbol === 'function' && !!Symbol.toStringTag; // better: use `has-tostringtag`
 
 var isIE68 = !(0 in [,]); // eslint-disable-line no-sparse-arrays, comma-spacing
 
 var isDDA = function isDocumentDotAll() { return false; };
 if (typeof document === 'object') {
-	// Firefox 3 canonicalized DDA to undefined when it's not accessed directly
+	// Firefox 3 canonicalizes DDA to undefined when it's not accessed directly
 	var all = document.all;
 	if (toStr.call(all) === toStr.call(document.all)) {
 		isDDA = function isDocumentDotAll(value) {
@@ -32290,8 +32316,12 @@ if (typeof document === 'object') {
 			if ((isIE68 || !value) && (typeof value === 'undefined' || typeof value === 'object')) {
 				try {
 					var str = toStr.call(value);
-					// IE 6-8 uses `objectClass`
-					return (str === ddaClass || str === objectClass) && value('') == null; // eslint-disable-line eqeqeq
+					return (
+						str === ddaClass
+						|| str === ddaClass2
+						|| str === ddaClass3 // opera 12.16
+						|| str === objectClass // IE 6-8
+					) && value('') == null; // eslint-disable-line eqeqeq
 				} catch (e) { /**/ }
 			}
 			return false;
@@ -32304,13 +32334,12 @@ module.exports = reflectApply
 		if (isDDA(value)) { return true; }
 		if (!value) { return false; }
 		if (typeof value !== 'function' && typeof value !== 'object') { return false; }
-		if (typeof value === 'function' && !value.prototype) { return true; }
 		try {
 			reflectApply(value, null, badArrayLike);
 		} catch (e) {
 			if (e !== isCallableMarker) { return false; }
 		}
-		return !isES6ClassFn(value);
+		return !isES6ClassFn(value) && tryFunctionObject(value);
 	}
 	: function isCallable(value) {
 		if (isDDA(value)) { return true; }
@@ -32319,7 +32348,8 @@ module.exports = reflectApply
 		if (hasToStringTag) { return tryFunctionObject(value); }
 		if (isES6ClassFn(value)) { return false; }
 		var strClass = toStr.call(value);
-		return strClass === fnClass || strClass === genClass || tryFunctionObject(value);
+		if (strClass !== fnClass && strClass !== genClass && !(/^\[object HTML/).test(strClass)) { return false; }
+		return tryFunctionObject(value);
 	};
 
 
@@ -32383,6 +32413,7 @@ var callBound = __webpack_require__(8608);
 
 var $toString = callBound('Object.prototype.toString');
 var hasToStringTag = __webpack_require__(3923)();
+var gOPD = __webpack_require__(8337);
 
 var g = typeof globalThis === 'undefined' ? __webpack_require__.g : globalThis;
 var typedArrays = availableTypedArrays();
@@ -32397,7 +32428,6 @@ var $indexOf = callBound('Array.prototype.indexOf', true) || function indexOf(ar
 };
 var $slice = callBound('String.prototype.slice');
 var toStrTags = {};
-var gOPD = __webpack_require__(434);
 var getPrototypeOf = Object.getPrototypeOf; // require('getprototypeof');
 if (hasToStringTag && gOPD && getPrototypeOf) {
 	forEach(typedArrays, function (typedArray) {
@@ -46712,7 +46742,7 @@ function formatProperty(ctx, value, recurseTimes, visibleKeys, key, array) {
         if (array) {
           str = str.split('\n').map(function(line) {
             return '  ' + line;
-          }).join('\n').substr(2);
+          }).join('\n').slice(2);
         } else {
           str = '\n' + str.split('\n').map(function(line) {
             return '   ' + line;
@@ -46729,7 +46759,7 @@ function formatProperty(ctx, value, recurseTimes, visibleKeys, key, array) {
     }
     name = JSON.stringify('' + key);
     if (name.match(/^"([a-zA-Z_][a-zA-Z_0-9]*)"$/)) {
-      name = name.substr(1, name.length - 2);
+      name = name.slice(1, -1);
       name = ctx.stylize(name, 'name');
     } else {
       name = name.replace(/'/g, "\\'")
@@ -47028,6 +47058,7 @@ exports.callbackify = callbackify;
 var forEach = __webpack_require__(7012);
 var availableTypedArrays = __webpack_require__(8092);
 var callBound = __webpack_require__(8608);
+var gOPD = __webpack_require__(8337);
 
 var $toString = callBound('Object.prototype.toString');
 var hasToStringTag = __webpack_require__(3923)();
@@ -47037,7 +47068,6 @@ var typedArrays = availableTypedArrays();
 
 var $slice = callBound('String.prototype.slice');
 var toStrTags = {};
-var gOPD = __webpack_require__(434);
 var getPrototypeOf = Object.getPrototypeOf; // require('getprototypeof');
 if (hasToStringTag && gOPD && getPrototypeOf) {
 	forEach(typedArrays, function (typedArray) {
@@ -47183,29 +47213,6 @@ module.exports = function availableTypedArrays() {
 	}
 	return out;
 };
-
-
-/***/ }),
-
-/***/ 434:
-/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
-
-"use strict";
-
-
-var GetIntrinsic = __webpack_require__(4663);
-
-var $gOPD = GetIntrinsic('%Object.getOwnPropertyDescriptor%', true);
-if ($gOPD) {
-	try {
-		$gOPD([], 'length');
-	} catch (e) {
-		// IE 8 has a broken gOPD
-		$gOPD = null;
-	}
-}
-
-module.exports = $gOPD;
 
 
 /***/ }),

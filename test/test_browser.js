@@ -1,6 +1,5 @@
 /*global expect: false,
          expr: false,
-         crypto: false,
          it: false,
          get_server: false,
          Primus: false,
@@ -27,44 +26,24 @@
 /*eslint-disable no-constant-condition */
 "use strict";
 
-var wd = require('wd');
+const crypto = require('crypto');
+const { promisify } = require('util');
+
+require('./_common.js');
 
 describe('PrimusDuplex (browser)', function ()
 {
-    var browser,
-        client_duplex_name,
+    var client_duplex_name,
         in_browser_queue,
         timeout = this.timeout();
 
-    before(function (cb)
+    before(async function ()
     {
-        browser = wd.remote();
-
-        browser.init(
-        {
-            browserName: 'chrome',
-            chromeOptions: {
-                w3c: false,
-                args: ['--headless']
-            },
-        },
-        function (err)
-        {
-            if (err) { return cb(err); }
-            browser.get(static_url + '/loader.html', function (err)
-            {
-                if (err) { return cb(err); }
-                browser.setAsyncScriptTimeout(timeout, cb);
-            });
-        });
+        await browser.url(static_url + '/loader.html');
+        await browser.setTimeout({ script: timeout });
     });
 
-    after(function (cb)
-    {
-        browser.quit(cb);
-    });
-
-    function _in_browser(f /*, args..., test, cb*/)
+    async function _in_browser(f /*, args..., test, cb*/)
     {
         var test = arguments[arguments.length - 2],
             cb = arguments[arguments.length - 1];
@@ -76,7 +55,7 @@ describe('PrimusDuplex (browser)', function ()
 
             try
             {
-                f.apply(this, Array.prototype.slice.call(arguments, 1, arguments.length - 1).concat([function (err)
+                eval('(' + f + ')').apply(this, Array.prototype.slice.call(arguments, 1, arguments.length - 1).concat([function (err)
                 {
                     if (err)
                     {
@@ -97,23 +76,28 @@ describe('PrimusDuplex (browser)', function ()
             }
         };
 
-        browser.executeAsync('return ' + f2 + '.apply(this, [' + f + '].concat(Array.prototype.slice.call(arguments)))',
-                        Array.prototype.slice.call(arguments, 1, arguments.length - 2),
-        function (err, r)
+        let r;
+        try
         {
-            if (err) { return cb(err); }
-            if (r.err) { return cb(new Error(r.err)); }
-            if (!test) { return cb.apply(this, [null].concat(r.vals)); }
+            r = await browser.executeAsync(
+                    f2, f.toString(), ...Array.prototype.slice.call(arguments, 1, arguments.length - 2));
+        }
+        catch (ex)
+        {
+            cb(ex);
+        }
 
-            try
-            {
-                test.apply(this, r.vals.concat([cb]));
-            }
-            catch (ex)
-            {
-                cb(ex);
-            }
-        });
+        if (r.err) { return cb(new Error(r.err)); }
+        if (!test) { return cb.apply(this, [null].concat(r.vals)); }
+
+        try
+        {
+            test.apply(this, r.vals.concat([cb]));
+        }
+        catch (ex)
+        {
+            cb(ex);
+        }
     }
 
     in_browser_queue = async.queue(function (task, next)
@@ -129,7 +113,15 @@ describe('PrimusDuplex (browser)', function ()
                 var ths = this, args = arguments;
                 setTimeout(function ()
                 {
-                    test.apply(ths, args);
+                    try
+                    {
+                        test.apply(ths, args);
+                    }
+                    catch (ex)
+                    {
+                        console.error(ex);
+                        throw ex;
+                    }
                 }, 0);
                 next();
             };
@@ -143,7 +135,15 @@ describe('PrimusDuplex (browser)', function ()
                 var ths = this, args = arguments;
                 setTimeout(function ()
                 {
-                    cb.apply(ths, args);
+                    try
+                    {
+                        cb.apply(ths, args);
+                    }
+                    catch (ex)
+                    {
+                        console.error(ex);
+                        throw ex;
+                    }
                 }, 0);
                 next();
             };
@@ -219,9 +219,9 @@ describe('PrimusDuplex (browser)', function ()
         });
     }
 
-    beforeEach(connect(make_client));
+    beforeEach(promisify(connect(make_client)));
 
-    afterEach(closedown(function (cb)
+    afterEach(promisify(closedown(function (cb)
     {
         in_browser(function (name, cb)
         {
@@ -247,7 +247,7 @@ describe('PrimusDuplex (browser)', function ()
             client_duplex.on('readable', drain);
             drain.call(client_duplex);
         }, client_duplex_name, null, cb);
-    }));
+    })));
 
     function both(f1, f2, gcn, gs)
     {
@@ -1317,6 +1317,17 @@ describe('PrimusDuplex (browser)', function ()
         };
     }
 
+    const it_orig = it;
+    const it_only_orig = it.only;
+    it = function (description, f)
+    {
+        return it_orig.call(this, description, promisify(f));
+    };
+    it.only = function (description, f)
+    {
+        return it_only_orig.call(this, description, promisify(f));
+    };
+
     it('should send a single byte from client to server',
        single_byte_client_server(get_client_duplex_name, get_server));
 
@@ -1367,7 +1378,7 @@ describe('PrimusDuplex (browser)', function ()
  
     it('should handle server read backpressure',
        server_read_backpressure(get_client_duplex_name, get_server));
-    
+
     it('should handle client read backpressure',
        client_read_backpressure(get_client_duplex_name, get_server));
 

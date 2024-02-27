@@ -5,11 +5,8 @@
          spark_duplex: false,
          primus: false,
          before: false,
-         crypto: false,
          fs: false,
          after: false,
-         server: false,
-         static_port: false,
          random_fname: false,
          drain: false */
 /*eslint-env node */
@@ -17,36 +14,23 @@
 
 global.Primus = require('primus');
 global.PrimusDuplex = require('..').PrimusDuplex;
-global.expect = require('chai').expect;
-global.crypto = require('crypto');
 global.fs = require('fs');
 global.path = require('path');
 global.tmp = require('tmp');
 global.async = require('async');
 global.server_port = 7000;
-global.static_port = 7001;
 global.client_url = 'http://localhost:7000';
 global.static_url = 'http://localhost:7001';
 global.random_fname = path.join(__dirname, 'fixtures', 'random');
 
-before(function (cb)
+const { promisify } = require('util');
+const { writeFile, unlink } = require('fs/promises');
+
+let spark_duplex;
+
+before(async () =>
 {
-    var http = require('http'),
-        finalhandler = require('finalhandler'),
-        serve_static = require('serve-static'),
-        serve = serve_static(path.join(__dirname, 'fixtures'));
-
-    global.server = http.createServer(function (req, res)
-    {
-        serve(req, res, finalhandler(req, res));
-    });
-
-    server.listen(static_port, cb);
-});
-
-after(function (cb)
-{
-    server.close(cb);
+    global.expect = (await import('chai')).expect;
 });
 
 before(function ()
@@ -59,25 +43,25 @@ before(function ()
     global.Socket = primus.Socket;
 });
 
-after(function (cb)
+after(async function ()
 {
-    primus.destroy(cb);
+    await primus.destroy.bind(primus)();
 });
 
-before(function (cb)
+before(async function ()
 {
-    primus.save(path.join(__dirname, 'fixtures', 'primus.js'), cb);
+    await promisify(primus.save.bind(primus))(path.join(__dirname, 'fixtures', 'primus.js'));
 });
 
-before(function (cb)
+before(async function ()
 {
-    var buf = crypto.randomBytes(1024 * 1024);
-    fs.writeFile(random_fname, buf, cb);
+    var buf = require('crypto').randomBytes(1024 * 1024);
+    await writeFile(random_fname, buf);
 });
 
-after(function (cb)
+after(async function ()
 {
-    fs.unlink(random_fname, cb);
+    await unlink(random_fname);
 });
 
 global.connect = function (make_client)
@@ -88,7 +72,7 @@ global.connect = function (make_client)
 
         primus.once('connection', function (spark)
         {
-            global.spark_duplex = new PrimusDuplex(spark,
+            spark_duplex = new PrimusDuplex(spark,
             {
                 highWaterMark: 100
             });
@@ -143,4 +127,3 @@ global.get_server = function ()
 };
 
 global.expr = function (v) { return v; };
-

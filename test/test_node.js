@@ -1,6 +1,5 @@
 /*global describe: false,
          expect: false,
-         crypto: false,
          it: false,
          Socket: false,
          PrimusDuplex: false,
@@ -19,6 +18,8 @@
 /*eslint-env node */
 /*eslint-disable no-constant-condition */
 "use strict";
+
+const crypto = require('crypto');
 
 function single_byte(get_sender, get_recipient)
 {

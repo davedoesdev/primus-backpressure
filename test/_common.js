@@ -2,10 +2,8 @@
          Primus: false,
          server_port: false,
          PrimusDuplex: false,
-         spark_duplex: false,
          primus: false,
          before: false,
-         fs: false,
          after: false,
          random_fname: false,
          drain: false */

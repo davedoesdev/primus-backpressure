@@ -1,6 +1,6 @@
 /*global expect: false,
          expr: false,
-         it: false,
+         it: true,
          get_server: false,
          Primus: false,
          PrimusDuplex: false,
@@ -19,9 +19,9 @@
          afterEach: false,
          describe: false,
          before: false,
-         after: false,
          static_url: false,
-         async: false */
+         async: false,
+         browser: false */
 /*eslint-env node */
 /*eslint-disable no-constant-condition */
 "use strict";

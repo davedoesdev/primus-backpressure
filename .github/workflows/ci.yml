@@ -34,7 +34,9 @@ jobs:
         run: npx grunt lint
 
       - name: Coverage and test
-        run: npx grunt coverage test-examples test-browser
+        uses: coactions/setup-xvfb@v1
+        with:
+          run: npx grunt coverage test-examples test-browser
 
       - name: Coveralls
         uses: coverallsapp/github-action@v2
